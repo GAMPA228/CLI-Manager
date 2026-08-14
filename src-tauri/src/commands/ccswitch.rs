@@ -900,6 +900,7 @@ pub(crate) struct CodexProviderRuntimeConfig {
     provider_id: String,
     provider_name: String,
     pub(crate) profile_name: String,
+    pub(crate) model_provider: String,
     pub(crate) env_key: String,
     pub(crate) secret_value: String,
     pub(crate) base_url: String,
@@ -1713,10 +1714,14 @@ fn codex_runtime_from_provider(
             );
             (generated_env_key, profile_text)
         });
+    let model_provider =
+        find_toml_value_by_key_patterns(&profile_text, &["model_provider"], &[])
+            .ok_or_else(|| "provider_config_invalid: missing_codex_model_provider".to_string())?;
     Ok(CodexProviderRuntimeConfig {
         provider_id,
         provider_name,
         profile_name,
+        model_provider,
         env_key,
         secret_value,
         base_url,
@@ -2649,6 +2654,7 @@ enabled = true"#,
         assert!(runtime
             .profile_text
             .contains("model_provider = \"cli_manager\""));
+        assert_eq!(runtime.model_provider, "cli_manager");
         assert!(runtime
             .profile_text
             .contains("base_url = \"https://proxy.example.com/v1\""));
@@ -2707,6 +2713,7 @@ enabled = true"#,
             .profile_text
             .contains("base_url = \"https://proxy.example.com/v1\""));
         assert!(runtime.profile_text.contains("model = \"gpt-5.4\""));
+        assert_eq!(runtime.model_provider, "cli_manager");
         assert!(!runtime.profile_text.contains("sk-codex-secret"));
         assert_eq!(runtime.secret_value, "sk-codex-secret");
     }
@@ -2750,6 +2757,7 @@ enabled = true"#,
         assert!(runtime.profile_text.contains("model = \"gpt-5.5\""));
         assert!(runtime.profile_text.contains("model_verbosity = \"high\""));
         assert!(runtime.profile_text.contains("wire_api = \"responses\""));
+        assert_eq!(runtime.model_provider, "custom");
         assert_eq!(runtime.env_key, "OPENAI_API_KEY");
         assert!(!runtime.profile_text.contains("sk-auth-secret"));
         assert_eq!(runtime.secret_value, "sk-auth-secret");
