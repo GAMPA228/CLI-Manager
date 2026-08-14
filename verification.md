@@ -922,3 +922,22 @@
 - `npm run build`：通过，完成 6822 个模块转换。
 - `git diff --check`：通过，仅有仓库现有 Windows 行尾提示。
 - 未在用户正在使用的 1.2 GB 数据库上启动新包，以免关闭或干扰现有 CLI-Manager；安装包首次运行仍需等待一次性迁移完成，后续启动不再重复迁移。
+
+## Codex app-server Provider Profile 回归修复（2026-08-14）
+
+### 根因与发现清单
+
+- 根因位于 CLI-Manager 原生 Codex 代理的命令参数边界：提交 `b84a7d68` 为锁定登记 Provider，在公共参数构造器中重新加入 `--profile`；该构造器同时服务 app-server 和普通运行命令，而 Codex 0.147.0 明确禁止 app-server 使用 `--profile`，导致 cc-connect 启动探针以退出码 1 结束。
+- 修改 `src-tauri/src/codex_app_server_proxy.rs`：参数构造按命令类型区分；app-server 只接收完整的 `model_provider`、Provider name、base URL、env key、wire API、模型目录及可选模型 `-c` 覆盖，普通运行命令继续加载生成的 Provider profile。
+- 修改 `src-tauri/src/commands/cc_connect.rs`：删除只为 app-server strict probe 镜像 Provider profile 的失效逻辑；真实 `CODEX_HOME`、登记 Provider 环境、模型目录和密钥脱敏保持不变。
+- 修改 `scripts/codexAppServerProxy.e2e.test.mjs`：锁定 app-server 不得出现 `--profile`，同时保留普通命令必须携带 profile 的断言。
+- 已复核但未修改：微信、Telegram、飞书、企业微信的平台配置与授权、cc-connect 源码及安装、SSH Codex 直连、会话 ID/cwd/Provider 校验、用户消息透传和文件投递上下文。
+- GitNexus 与 codebase-memory MCP 当前未暴露；已按降级规则使用修复契约、`rg`、Git 历史/`blame`、真实 Codex CLI 复现和源码调用点完成影响分析。该启动边界影响全部本地 Codex 远程平台，风险为 HIGH。
+
+### 验证结果
+
+- 本机 Codex CLI 0.147.0：旧参数稳定复现 `--profile only applies to runtime commands`；去掉 profile、保留相同完整 `-c` Provider 覆盖后，`app-server --strict-config --listen stdio://` 正常启动并以 0 退出。
+- 新编译的 Windows `cli-manager-codex-proxy.exe` 使用隔离 `CODEX_HOME`、受管 Provider name 和完整覆盖启动真实 Codex app-server 成功；未发起模型请求。
+- `cargo test codex_app_server_proxy::tests --lib`：21 项通过。
+- `cargo test commands::cc_connect::tests --lib`：48 项通过。
+- `node scripts/codexAppServerProxy.e2e.test.mjs`：4 项通过，使用真实 Windows 原生代理二进制。

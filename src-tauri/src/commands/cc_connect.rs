@@ -3,8 +3,8 @@ use crate::codex_app_server_proxy::HELPER_SUBCOMMAND as CODEX_PROXY_SUBCOMMAND;
 use crate::codex_app_server_proxy::{
     SshCodexLaunch, CODEX_BASE_URL_OVERRIDE_ENV, CODEX_ENV_KEY_OVERRIDE_ENV, CODEX_LAUNCHER_ENV,
     CODEX_MODEL_CATALOG_OVERRIDE_ENV, CODEX_MODEL_OVERRIDE_ENV, CODEX_MODEL_PROVIDER_ENV,
-    CODEX_PROFILE_NAME_ENV, CODEX_SSH_LAUNCH_ENV, CODEX_WIRE_API_OVERRIDE_ENV,
-    EXPECTED_SESSION_ID_ENV, PROXY_EXECUTABLE_ENV,
+    CODEX_PROFILE_NAME_ENV, CODEX_PROVIDER_NAME_OVERRIDE_ENV, CODEX_SSH_LAUNCH_ENV,
+    CODEX_WIRE_API_OVERRIDE_ENV, EXPECTED_SESSION_ID_ENV, PROXY_EXECUTABLE_ENV,
 };
 #[cfg(target_os = "windows")]
 use crate::process_job::ChildJob;
@@ -2367,6 +2367,7 @@ struct RemoteCodexProviderLaunch {
     name: String,
     profile_name: String,
     model_provider: String,
+    provider_name_override: String,
     model: Option<String>,
     models: Vec<String>,
     base_url_override: String,
@@ -2777,26 +2778,6 @@ fn write_codex_model_discovery_home(
     )
 }
 
-fn mirror_codex_provider_profile(
-    directory: &Path,
-    codex_home: &Path,
-    profile_name: &str,
-) -> Result<(), String> {
-    let file_name = format!("{profile_name}.config.toml");
-    let source = codex_home.join(&file_name);
-    let payload = fs::read(&source).map_err(|err| {
-        format!(
-            "read generated Codex Provider profile {} failed: {err}",
-            path_string(&source)
-        )
-    })?;
-    write_file_atomically_if_changed(
-        &directory.join(file_name),
-        &payload,
-        "Codex Provider discovery profile",
-    )
-}
-
 fn parse_codex_models_response(payload: &[u8]) -> Vec<String> {
     let Ok(value) = serde_json::from_slice::<serde_json::Value>(payload) else {
         return Vec::new();
@@ -2968,6 +2949,10 @@ fn prepare_remote_codex_launch(
                     .unwrap_or_else(|| provider_id.to_string()),
                 profile_name,
                 model_provider: model_provider.clone(),
+                provider_name_override: codex_wrapper_override(
+                    &codex_provider_override_key(&model_provider, "name")?,
+                    "CLI-Manager remote",
+                )?,
                 models: normalize_managed_codex_models(model.as_deref(), discovered_models),
                 model: model.clone(),
                 base_url_override: codex_base_url_override(&model_provider, &runtime.base_url)?,
@@ -2991,13 +2976,6 @@ fn prepare_remote_codex_launch(
         Some(provider) => {
             let path = remote_manager_dir()?.join("codex-model-discovery");
             write_codex_model_discovery_home(&path, codex_home.as_deref(), provider)?;
-            mirror_codex_provider_profile(
-                &path,
-                codex_home.as_deref().ok_or_else(|| {
-                    "Codex home is unavailable for Provider discovery".to_string()
-                })?,
-                &provider.profile_name,
-            )?;
             Some(path)
         }
         None => None,
@@ -3084,6 +3062,10 @@ fn apply_remote_codex_launch_environment(
             command
                 .env(CODEX_PROFILE_NAME_ENV, &provider.profile_name)
                 .env(CODEX_MODEL_PROVIDER_ENV, &provider.model_provider)
+                .env(
+                    CODEX_PROVIDER_NAME_OVERRIDE_ENV,
+                    &provider.provider_name_override,
+                )
                 .env(CODEX_BASE_URL_OVERRIDE_ENV, &provider.base_url_override)
                 .env(CODEX_ENV_KEY_OVERRIDE_ENV, &provider.env_key_override)
                 .env(CODEX_MODEL_CATALOG_OVERRIDE_ENV, model_catalog_override)
@@ -3101,6 +3083,7 @@ fn apply_remote_codex_launch_environment(
             command
                 .env_remove(CODEX_PROFILE_NAME_ENV)
                 .env_remove(CODEX_MODEL_PROVIDER_ENV)
+                .env_remove(CODEX_PROVIDER_NAME_OVERRIDE_ENV)
                 .env_remove(CODEX_BASE_URL_OVERRIDE_ENV)
                 .env_remove(CODEX_ENV_KEY_OVERRIDE_ENV)
                 .env_remove(CODEX_MODEL_CATALOG_OVERRIDE_ENV)
@@ -6446,6 +6429,7 @@ allow_from = ""
             name: "Project Provider".to_string(),
             profile_name: "cli-manager-project-provider-123".to_string(),
             model_provider: "custom".to_string(),
+            provider_name_override: "model_providers.custom.name=CLI-Manager remote".to_string(),
             model: Some("gpt-5.4".to_string()),
             models: vec!["gpt-5.4".to_string(), "gpt-5.3-codex".to_string()],
             base_url_override: "model_providers.custom.base_url=https://provider.example.com/v1"
@@ -6549,34 +6533,6 @@ allow_from = ""
     }
 
     #[test]
-    fn codex_provider_profile_is_mirrored_for_the_strict_probe() {
-        let codex_home = tempfile::tempdir().unwrap();
-        let discovery_home = tempfile::tempdir().unwrap();
-        let profile_name = "cli-manager-project-provider-123";
-        let profile = "model_provider = \"custom\"\n[model_providers.custom]\nbase_url = \"https://provider.example.com/v1\"\n";
-        fs::write(
-            codex_home
-                .path()
-                .join(format!("{profile_name}.config.toml")),
-            profile,
-        )
-        .unwrap();
-
-        mirror_codex_provider_profile(discovery_home.path(), codex_home.path(), profile_name)
-            .unwrap();
-
-        assert_eq!(
-            fs::read_to_string(
-                discovery_home
-                    .path()
-                    .join(format!("{profile_name}.config.toml"))
-            )
-            .unwrap(),
-            profile
-        );
-    }
-
-    #[test]
     fn codex_model_discovery_reuses_installed_catalog_capabilities() {
         let source = tempfile::tempdir().unwrap();
         let destination = tempfile::tempdir().unwrap();
@@ -6666,6 +6622,12 @@ allow_from = ""
             Some(&Some("custom".to_string()))
         );
         assert_eq!(
+            environment.get(CODEX_PROVIDER_NAME_OVERRIDE_ENV),
+            Some(&Some(
+                "model_providers.custom.name=CLI-Manager remote".to_string()
+            ))
+        );
+        assert_eq!(
             environment.get(CODEX_MODEL_OVERRIDE_ENV),
             Some(&Some("model=gpt-5.4".to_string()))
         );
@@ -6711,6 +6673,7 @@ allow_from = ""
         for key in [
             CODEX_PROFILE_NAME_ENV,
             CODEX_MODEL_PROVIDER_ENV,
+            CODEX_PROVIDER_NAME_OVERRIDE_ENV,
             CODEX_BASE_URL_OVERRIDE_ENV,
             CODEX_ENV_KEY_OVERRIDE_ENV,
             CODEX_MODEL_CATALOG_OVERRIDE_ENV,

@@ -25,6 +25,8 @@ pub(crate) const CODEX_MODEL_OVERRIDE_ENV: &str = "CLI_MANAGER_CODEX_MODEL_OVERR
 pub(crate) const CODEX_MODEL_CATALOG_OVERRIDE_ENV: &str =
     "CLI_MANAGER_CODEX_MODEL_CATALOG_OVERRIDE";
 pub(crate) const CODEX_WIRE_API_OVERRIDE_ENV: &str = "CLI_MANAGER_CODEX_WIRE_API_OVERRIDE";
+pub(crate) const CODEX_PROVIDER_NAME_OVERRIDE_ENV: &str =
+    "CLI_MANAGER_CODEX_PROVIDER_NAME_OVERRIDE";
 pub(crate) const CODEX_PROFILE_NAME_ENV: &str = "CLI_MANAGER_CODEX_PROFILE_NAME";
 pub(crate) const CODEX_MODEL_PROVIDER_ENV: &str = "CLI_MANAGER_CODEX_MODEL_PROVIDER";
 pub(crate) const CODEX_SSH_LAUNCH_ENV: &str = "CLI_MANAGER_CODEX_SSH_LAUNCH";
@@ -420,6 +422,7 @@ fn codex_launcher_from_environment() -> Result<PathBuf, String> {
 struct CodexProviderOverrides {
     profile_name: Option<String>,
     model_provider: Option<String>,
+    provider_name: Option<String>,
     base_url: Option<String>,
     env_key: Option<String>,
     model: Option<String>,
@@ -432,6 +435,7 @@ impl CodexProviderOverrides {
         Ok(Self {
             profile_name: optional_unicode_env(CODEX_PROFILE_NAME_ENV)?,
             model_provider: optional_unicode_env(CODEX_MODEL_PROVIDER_ENV)?,
+            provider_name: optional_unicode_env(CODEX_PROVIDER_NAME_OVERRIDE_ENV)?,
             base_url: optional_unicode_env(CODEX_BASE_URL_OVERRIDE_ENV)?,
             env_key: optional_unicode_env(CODEX_ENV_KEY_OVERRIDE_ENV)?,
             model: optional_unicode_env(CODEX_MODEL_OVERRIDE_ENV)?,
@@ -440,9 +444,10 @@ impl CodexProviderOverrides {
         })
     }
 
-    fn command_args(&self) -> Result<Vec<String>, String> {
+    fn command_args(&self, include_profile: bool) -> Result<Vec<String>, String> {
         let has_any = self.profile_name.is_some()
             || self.model_provider.is_some()
+            || self.provider_name.is_some()
             || self.base_url.is_some()
             || self.env_key.is_some()
             || self.model.is_some()
@@ -451,14 +456,14 @@ impl CodexProviderOverrides {
         if !has_any {
             return Ok(Vec::new());
         }
-        let profile_name = self
-            .profile_name
-            .as_ref()
-            .ok_or_else(|| "Codex Provider profile name is missing".to_string())?;
         let model_provider = self
             .model_provider
             .as_ref()
             .ok_or_else(|| "Codex model Provider ID is missing".to_string())?;
+        let provider_name = self
+            .provider_name
+            .as_ref()
+            .ok_or_else(|| "Codex Provider name override is missing".to_string())?;
         let base_url = self
             .base_url
             .as_ref()
@@ -475,15 +480,23 @@ impl CodexProviderOverrides {
             .model_catalog
             .as_ref()
             .ok_or_else(|| "Codex model catalog override is missing".to_string())?;
-        let mut args = vec![
-            "--profile".to_string(),
-            profile_name.clone(),
+        let mut args = Vec::new();
+        if include_profile {
+            let profile_name = self
+                .profile_name
+                .as_ref()
+                .ok_or_else(|| "Codex Provider profile name is missing".to_string())?;
+            args.extend(["--profile".to_string(), profile_name.clone()]);
+        }
+        args.extend([
             "-c".to_string(),
             format!(
                 "model_provider={}",
                 serde_json::to_string(model_provider)
                     .map_err(|err| format!("encode Codex model Provider ID failed: {err}"))?
             ),
+            "-c".to_string(),
+            provider_name.clone(),
             "-c".to_string(),
             base_url.clone(),
             "-c".to_string(),
@@ -492,7 +505,7 @@ impl CodexProviderOverrides {
             wire_api.clone(),
             "-c".to_string(),
             model_catalog.clone(),
-        ];
+        ]);
         if let Some(model) = self.model.as_ref() {
             args.extend(["-c".to_string(), model.clone()]);
         }
@@ -513,7 +526,10 @@ fn build_codex_child_args(
     child_args: &[String],
     overrides: &CodexProviderOverrides,
 ) -> Result<Vec<String>, String> {
-    let mut args = overrides.command_args()?;
+    // Codex rejects --profile for app-server, while runtime commands still use
+    // the generated profile. The complete -c overrides lock app-server to the
+    // registered Provider without relying on profile support.
+    let mut args = overrides.command_args(!is_app_server_command(child_args))?;
     args.extend_from_slice(child_args);
     Ok(args)
 }
@@ -1048,7 +1064,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_overrides_are_inserted_before_app_server_without_secrets() {
+    fn app_server_provider_overrides_omit_runtime_only_profile() {
         let args = build_codex_child_args(
             &[
                 "app-server".to_string(),
@@ -1058,6 +1074,9 @@ mod tests {
             &CodexProviderOverrides {
                 profile_name: Some("cli-manager-project-provider-123".to_string()),
                 model_provider: Some("custom".to_string()),
+                provider_name: Some(
+                    "model_providers.custom.name=CLI-Manager remote".to_string(),
+                ),
                 base_url: Some(
                     "model_providers.custom.base_url=https://provider.example.com/v1"
                         .to_string(),
@@ -1079,10 +1098,10 @@ mod tests {
         assert_eq!(
             args,
             vec![
-                "--profile",
-                "cli-manager-project-provider-123",
                 "-c",
                 "model_provider=\"custom\"",
+                "-c",
+                "model_providers.custom.name=CLI-Manager remote",
                 "-c",
                 "model_providers.custom.base_url=https://provider.example.com/v1",
                 "-c",
@@ -1099,6 +1118,50 @@ mod tests {
             ]
         );
         assert!(!args.iter().any(|arg| arg.contains("sk-provider-secret")));
+    }
+
+    #[test]
+    fn runtime_provider_overrides_keep_the_generated_profile() {
+        let args = build_codex_child_args(
+            &["resume".to_string(), "thread-original".to_string()],
+            &CodexProviderOverrides {
+                profile_name: Some("cli-manager-project-provider-123".to_string()),
+                model_provider: Some("custom".to_string()),
+                provider_name: Some(
+                    "model_providers.custom.name=CLI-Manager remote".to_string(),
+                ),
+                base_url: Some(
+                    "model_providers.custom.base_url=https://provider.example.com/v1"
+                        .to_string(),
+                ),
+                env_key: Some(
+                    "model_providers.custom.env_key=CLI_MANAGER_CODEX_PROVIDER_API_KEY"
+                        .to_string(),
+                ),
+                model: Some("model=gpt-5.4".to_string()),
+                model_catalog: Some(
+                    r#"model_catalog_json="C:/Users/test/CLI Manager/cli-manager-model-catalog.json""#
+                        .to_string(),
+                ),
+                wire_api: Some("model_providers.custom.wire_api=responses".to_string()),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            args.get(0..2),
+            Some(
+                [
+                    "--profile".to_string(),
+                    "cli-manager-project-provider-123".to_string(),
+                ]
+                .as_slice()
+            )
+        );
+        assert_eq!(
+            args.get(args.len().saturating_sub(2)..),
+            Some(["resume".to_string(), "thread-original".to_string()].as_slice())
+        );
     }
 
     #[test]
@@ -1129,10 +1192,11 @@ mod tests {
         let error = CodexProviderOverrides {
             profile_name: Some("cli-manager-project-provider-123".into()),
             model_provider: Some("custom".into()),
+            provider_name: Some("model_providers.custom.name=CLI-Manager remote".into()),
             base_url: Some("model_providers.custom.base_url=https://example.com".into()),
             ..CodexProviderOverrides::default()
         }
-        .command_args()
+        .command_args(false)
         .unwrap_err();
         assert!(error.contains("environment key"));
     }
@@ -1142,6 +1206,7 @@ mod tests {
         let error = CodexProviderOverrides {
             profile_name: Some("cli-manager-project-provider-123".into()),
             model_provider: Some("custom".into()),
+            provider_name: Some("model_providers.custom.name=CLI-Manager remote".into()),
             base_url: Some("model_providers.custom.base_url=https://example.com".into()),
             env_key: Some(
                 "model_providers.custom.env_key=CLI_MANAGER_CODEX_PROVIDER_API_KEY".into(),
@@ -1149,7 +1214,7 @@ mod tests {
             wire_api: Some("model_providers.custom.wire_api=responses".into()),
             ..CodexProviderOverrides::default()
         }
-        .command_args()
+        .command_args(false)
         .unwrap_err();
         assert!(error.contains("model catalog"));
     }

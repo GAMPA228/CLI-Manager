@@ -22,6 +22,7 @@ const proxyEnvironmentKeys = [
   "CLI_MANAGER_CODEX_MODEL_OVERRIDE",
   "CLI_MANAGER_CODEX_MODEL_PROVIDER",
   "CLI_MANAGER_CODEX_PROFILE_NAME",
+  "CLI_MANAGER_CODEX_PROVIDER_NAME_OVERRIDE",
   "CLI_MANAGER_CODEX_WIRE_API_OVERRIDE",
   "CLI_MANAGER_CODEX_SSH_LAUNCH",
   "CLI_MANAGER_TEST_API_KEY",
@@ -111,6 +112,8 @@ function runProxy({
     Object.assign(environment, {
       CLI_MANAGER_CODEX_PROFILE_NAME: "cli-manager-project-provider-123",
       CLI_MANAGER_CODEX_MODEL_PROVIDER: "custom",
+      CLI_MANAGER_CODEX_PROVIDER_NAME_OVERRIDE:
+        "model_providers.custom.name=CLI-Manager remote",
       CLI_MANAGER_CODEX_BASE_URL_OVERRIDE:
         "model_providers.custom.base_url=https://provider.example.com/v1",
       CLI_MANAGER_CODEX_ENV_KEY_OVERRIDE:
@@ -230,10 +233,10 @@ process.exitCode = Number(process.env.FAKE_CODEX_EXIT_CODE || "0");
   });
   assert.equal(withProvider.result.status, 0, "proxy must complete through a CMD launcher");
   assert.deepEqual(withProvider.capture.args, [
-    "--profile",
-    "cli-manager-project-provider-123",
     "-c",
     'model_provider="custom"',
+    "-c",
+    "model_providers.custom.name=CLI-Manager remote",
     "-c",
     "model_providers.custom.base_url=https://provider.example.com/v1",
     "-c",
@@ -270,6 +273,8 @@ process.exitCode = Number(process.env.FAKE_CODEX_EXIT_CODE || "0");
     "cli-manager-project-provider-123",
     "-c",
     'model_provider="custom"',
+    "-c",
+    "model_providers.custom.name=CLI-Manager remote",
     "-c",
     "model_providers.custom.base_url=https://provider.example.com/v1",
     "-c",
