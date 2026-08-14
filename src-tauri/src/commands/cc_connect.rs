@@ -1251,6 +1251,25 @@ fn build_managed_config_with_codex(
                 .and_then(|provider| provider.model.clone())
         })
         .flatten();
+    let mut agent_environment = [
+        (TELEGRAM_TOKEN_ENV.to_string(), String::new()),
+        (FEISHU_APP_ID_ENV.to_string(), String::new()),
+        (FEISHU_APP_SECRET_ENV.to_string(), String::new()),
+        (WEIXIN_TOKEN_ENV.to_string(), String::new()),
+        (WECOM_BOT_ID_ENV.to_string(), String::new()),
+        (WECOM_BOT_SECRET_ENV.to_string(), String::new()),
+    ]
+    .into_iter()
+    .collect::<BTreeMap<_, _>>();
+    if let Some(provider) = codex_launch.and_then(|launch| launch.provider.as_ref()) {
+        // cc-connect builds the Codex child environment from this map. Keep the
+        // credential in the managed process environment and reference it here,
+        // so the generated config never persists the secret itself.
+        agent_environment.insert(
+            provider.env_key.clone(),
+            format!("${{{}}}", provider.env_key),
+        );
+    }
     Ok(ManagedConfig {
         data_dir: config_path_value(&data_dir()?),
         language: match profile.language {
@@ -1326,19 +1345,7 @@ fn build_managed_config_with_codex(
                     app_server_url: profile.agent.app_server_url().map(str::to_string),
                     model: active_model,
                     codex_home,
-                    // cc-connect resolves platform placeholders in its own process,
-                    // then MergeEnv lets these empty values override inheritance into
-                    // Claude/Codex child processes.
-                    env: [
-                        (TELEGRAM_TOKEN_ENV.to_string(), String::new()),
-                        (FEISHU_APP_ID_ENV.to_string(), String::new()),
-                        (FEISHU_APP_SECRET_ENV.to_string(), String::new()),
-                        (WEIXIN_TOKEN_ENV.to_string(), String::new()),
-                        (WECOM_BOT_ID_ENV.to_string(), String::new()),
-                        (WECOM_BOT_SECRET_ENV.to_string(), String::new()),
-                    ]
-                    .into_iter()
-                    .collect(),
+                    env: agent_environment,
                 },
             },
             platforms,
@@ -6456,7 +6463,7 @@ allow_from = ""
     }
 
     #[test]
-    fn managed_codex_config_keeps_provider_runtime_out_of_cc_connect_config() {
+    fn managed_codex_config_forwards_provider_key_without_persisting_secret() {
         let project = tempfile::tempdir().unwrap();
         let mut profile = sample_profile(project.path());
         profile.agent = CcConnectAgent::Codex;
@@ -6483,10 +6490,13 @@ allow_from = ""
             .unwrap()
             .contains_key("provider"));
         assert!(!agent.as_table().unwrap().contains_key("providers"));
+        assert_eq!(
+            agent["options"]["env"]["CLI_MANAGER_CODEX_PROVIDER_API_KEY"].as_str(),
+            Some("${CLI_MANAGER_CODEX_PROVIDER_API_KEY}")
+        );
         for secret in [
             "sk-provider-secret",
             "https://provider.example.com/v1",
-            "CLI_MANAGER_CODEX_PROVIDER_API_KEY",
             "Project Provider",
         ] {
             assert!(!raw.contains(secret));
@@ -7109,6 +7119,9 @@ allow_from = ""
         .unwrap();
         fs::write(&config_path, toml::to_string_pretty(&config).unwrap()).unwrap();
         format_and_check_config_syntax(Path::new(&binary), &config_path).unwrap();
+        let formatted = fs::read_to_string(&config_path).unwrap();
+        assert!(formatted.contains("${CLI_MANAGER_CODEX_PROVIDER_API_KEY}"));
+        assert!(!formatted.contains("sk-provider-secret"));
         profile.platforms.clear();
         profile.platform = CcConnectPlatform::Weixin;
         profile.allow_from = "authorization-pending@im.wechat".to_string();

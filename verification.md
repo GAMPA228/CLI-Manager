@@ -941,3 +941,21 @@
 - `cargo test codex_app_server_proxy::tests --lib`：21 项通过。
 - `cargo test commands::cc_connect::tests --lib`：48 项通过。
 - `node scripts/codexAppServerProxy.e2e.test.mjs`：4 项通过，使用真实 Windows 原生代理二进制。
+
+## cc-connect Codex 子进程 Provider 密钥转发修复（2026-08-14）
+
+### 根因与发现清单
+
+- 根因位于 CLI-Manager 受管进程环境与 cc-connect Agent 子进程环境的边界：CLI-Manager 只把登记 Provider 的动态密钥变量注入 cc-connect 父进程，却没有写入 `[projects.agent.options.env]`；cc-connect app-server 恢复线程后能选中正确 Provider，但模型请求阶段的 Codex 子进程缺少该变量，因此 Telegram 持续显示输入中并报 `Missing environment variable`。
+- 日志确认 Telegram 消息已接收、Codex app-server 已启动且原 `cliSessionId` 已恢复；项目 `test` 仍解析到 Provider `Amz`，失败变量名也与该 Provider ID 的派生变量一致，排除了 Telegram Token、代理、工作目录、Session ID 和 Provider 选择错误。
+- 修改 `build_managed_config_with_codex`：把 Provider 动态变量通过 `${VAR_NAME}` 占位符显式加入 Agent 环境；真实密钥仍只存在于受管进程环境，不写入 `config.toml`、日志或命令行。微信、Telegram、飞书和企业微信复用同一 Codex Agent 配置，因此同时覆盖。
+- 已复核但未修改 app-server 代理参数、`thread/resume` 校验、Provider 数据库/密钥存储、SSH 托管和 cc-connect 源码。
+- GitNexus 与 codebase-memory MCP 当前未暴露；已降级使用 Provider 契约、`rg`、生成配置、运行日志、SQLite 元数据与源码调用点完成影响分析。变更只影响本地 Codex 受管配置生成，风险为中等。
+
+### 验证结果
+
+- `cargo test managed_codex_config_forwards_provider_key_without_persisting_secret`：通过，断言配置包含动态变量占位符且不包含 Provider 密钥、地址或名称。
+- 使用本机 cc-connect `v1.5.0-beta.3` 执行 `managed_config_matches_installed_cc_connect_when_requested`：通过，生成配置可被已安装版本解析和格式化。
+- `cargo test commands::cc_connect::tests --lib`：48 项通过。
+- `cargo fmt --all -- --check`、`git diff --check`：通过，仅有仓库现有 Windows 行尾提示。
+- 尚未替用户重启当前 cc-connect 或发送真实 Telegram 消息，避免干扰正在使用的终端；安装包/开发版启动后需做一次真实托管消息冒烟。
