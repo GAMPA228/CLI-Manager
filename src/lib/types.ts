@@ -368,6 +368,19 @@ export type TreeNode =
 
 export type TerminalSessionKind = "pty" | "subagent-transcript" | "file-editor" | "synced-history";
 
+export interface NativeProviderLaunchSnapshot {
+  appType: "claude" | "codex" | "grokbuild";
+  providerId: string;
+  providerName: string;
+  source: string;
+  snapshotId: string;
+  claudeSettingsPath: string | null;
+  generatedHome: string | null;
+  grokModel: string | null;
+  codexProfileName: string | null;
+  configOverrides: string[];
+}
+
 export type SubagentTranscriptSourceKind = "pending" | "child-jsonl" | "parent-jsonl" | "lifecycle-only";
 
 export interface SubagentTranscriptSource {
@@ -432,6 +445,8 @@ export interface TerminalSession {
   /** true 时启动命令由 XTermTerminal 在 initialTerminalOutput 写完后再发送。 */
   deferStartupUntilInitialOutput?: boolean;
   cliSessionId?: string;
+  /** 本次会话使用的原生 Provider 快照；恢复时复用，避免后续切换污染旧会话。 */
+  providerSnapshot?: NativeProviderLaunchSnapshot;
   remoteTranscriptRef?: string;
   remoteHistoryConsumerId?: string;
   remoteHistorySourceInstanceId?: string;
@@ -572,6 +587,7 @@ export interface HistorySessionSummary {
   project_key: string;
   title: string;
   file_path: string;
+  parent_session_id?: string | null;
   cwd?: string | null;
   created_at: number;
   updated_at: number;
@@ -586,9 +602,27 @@ export interface HistorySessionSummary {
   usage?: HistorySessionUsage;
 }
 
+export type HistoryMessagePartKind =
+  | "text"
+  | "tool_call"
+  | "tool_result"
+  | "reasoning"
+  | "system"
+  | "metadata"
+  | "unknown";
+
+export interface HistoryMessagePart {
+  kind: HistoryMessagePartKind;
+  content: string;
+  tool_name?: string;
+  call_id?: string;
+}
+
 export interface HistoryMessage {
   role: string;
   content: string;
+  /** 可选结构化内容；旧快照缺失时由前端按 role 保守回退。 */
+  parts?: HistoryMessagePart[];
   timestamp?: string | null;
   model?: string;
   input_tokens?: number;
@@ -919,6 +953,12 @@ export interface HistoryStatsPayload {
   source_distribution: HistoryStatsSourceItem[];
   project_efficiency: HistoryStatsProjectEfficiencyItem[];
   hourly_activity: HistoryStatsHourlyActivityItem[];
+  data_quality: {
+    route_records: number;
+    session_fallback_records: number;
+    unattributed_records: number;
+    missing_usage_records: number;
+  };
 }
 
 export type RequestLogSource = "claude" | "codex" | "gemini" | "opencode" | "grok";
@@ -961,6 +1001,18 @@ export interface RequestLogItem {
   unpriced_tokens: number;
   status: "recorded";
   session_available: boolean;
+  data_source?: "route" | "session_log";
+  provider_id?: string | null;
+  provider_name?: string | null;
+  requested_model?: string | null;
+  outbound_model?: string | null;
+  response_model?: string | null;
+  usage_status?: "complete" | "partial" | "missing" | "invalid";
+  status_code?: number | null;
+  outcome?: string;
+  duration_ms?: number;
+  attempt_count?: number;
+  degraded?: boolean;
 }
 
 export interface RequestLogSummary {

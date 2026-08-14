@@ -47,6 +47,7 @@ import { useTerminalOsc } from "../hooks/useTerminalOsc";
 import { useTerminalDisplay } from "../hooks/useTerminalDisplay";
 import { useTerminalInput, type TerminalSuggestionGhostState } from "../hooks/useTerminalInput";
 import { getTerminalCellWidth } from "../lib/terminalCellWidth";
+import { resolveClaudeImeCompositionAnchor } from "../lib/terminalImeAnchor";
 import { copyTextToClipboard } from "../lib/systemClipboard";
 import { hasCodexTuiViewport } from "../lib/terminalTuiDisplay";
 import { createTerminalTuiColorSyncController } from "../lib/terminalTuiColorSync";
@@ -75,6 +76,7 @@ import {
 } from "./terminal/TerminalMarkdownPreview";
 import {
   createTerminalCliContext,
+  isClaudeTerminalContext,
   isCodexTerminalContext,
 } from "../terminal/browser/TerminalCliContext";
 import { createTerminalMouseInteractionOptions } from "../terminal/browser/TerminalMouseInteraction";
@@ -1341,7 +1343,7 @@ export function XTermTerminal({ sessionId, isActive = true, isVisible = true, fo
       resolveInitialDisplayReady = null;
       resolve?.();
     };
-    const finishInitialDisplayRestore = () => {
+    const finishInitialDisplayRestore = (hasSnapshot: boolean) => {
       scheduleFit(true);
       requestAnimationFrame(() => {
         if (terminalRef.current !== terminal) return;
@@ -1352,7 +1354,21 @@ export function XTermTerminal({ sessionId, isActive = true, isVisible = true, fo
             logError("Failed to snapshot terminal buffer before dispose", { sessionId, err });
           }
         };
-        markInitialDisplayReady();
+        if (!hasSnapshot) {
+          markInitialDisplayReady();
+          return;
+        }
+        // RAF-A (scheduleFit) fires before RAF-B below. If a horizontal resize occurs
+        // in RAF-A, xterm reflows the buffer and may move the cursor away from the
+        // clean bottom line written by the snapshot restore sequence. RAF-B runs after
+        // RAF-A, so re-push the cursor to the bottom before releasing the PTY output
+        // gate. This must stay in the snapshot path: a new shell has no stale cursor
+        // to repair and should keep its normal initial cursor position.
+        terminal.write("\x1b[999B\r\n", () => {
+          if (terminalRef.current !== terminal) return;
+          terminal.scrollToBottom();
+          markInitialDisplayReady();
+        });
       });
     };
     let initialDisplayRestoreRaf: number | null = null;
@@ -1380,12 +1396,12 @@ export function XTermTerminal({ sessionId, isActive = true, isVisible = true, fo
           refreshTerminalViewport(terminal);
           scheduleViewportRefresh();
           writeDeferredStartup();
-          finishInitialDisplayRestore();
+          finishInitialDisplayRestore(true);
         });
       });
     } else {
       writeDeferredStartup();
-      finishInitialDisplayRestore();
+      finishInitialDisplayRestore(false);
     }
     if (isActive && isVisible) {
       focusTerminalWithCodexCursorPolicy(terminal);
@@ -1697,7 +1713,12 @@ export function XTermTerminal({ sessionId, isActive = true, isVisible = true, fo
       forwarding: inputForwarding,
       osPlatformRef,
       scheduleFit,
-      resolveCompositionAnchor: piTerminalCompatibilityRef.current?.resolveImeCompositionAnchor,
+      resolveCompositionAnchor: (runtimeTerminal, anchor) => {
+        const piAnchor = piTerminalCompatibilityRef.current?.resolveImeCompositionAnchor(runtimeTerminal, anchor) ?? anchor;
+        return isClaudeTerminalContext(getSessionToolContext())
+          ? resolveClaudeImeCompositionAnchor(runtimeTerminal, piAnchor)
+          : piAnchor;
+      },
       resolveTextareaAnchor: piTerminalCompatibilityRef.current?.resolveImeTextareaAnchor,
       shouldRefreshCompositionAnchor: piTerminalCompatibilityRef.current?.shouldRefreshImeCompositionAnchor,
       onCompositionCommitted: (textareaValue) => {
