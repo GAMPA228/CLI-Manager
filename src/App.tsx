@@ -1759,6 +1759,7 @@ function App() {
               projectScopedTerminalViewEnabled={projectScopedTerminalViewEnabled}
               terminalScope={terminalScope}
               onOpenProviderSettings={() => handleOpenSettings("native-providers")}
+              onOpenHistorySettings={() => handleOpenSettings("history-sources")}
             />
           </main>
         </div>
