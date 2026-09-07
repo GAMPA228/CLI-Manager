@@ -1469,3 +1469,24 @@ v1.3.9-history-detail-ordering-persistence-codex-thread-name-and-descending-tran
 ### Status
 
 [OK] **Completed**
+
+
+## Session 109: 完成 Issue #248 VS Code 式工作区布局控制
+
+**Date**: 2026-09-07
+**Task**: 完成 Issue #248 VS Code 式工作区布局控制
+**Branch**: `master`
+
+### Summary
+
+完成 V1.3.9 工作区布局控制：标题栏快速操作、项目侧栏与终端辅助面板左右停靠、Workspan Tab 上下位置、可见性持久化、无效 Workspan 操作保护及相关测试与文档。通过 26 项布局测试、TypeScript 检查和生产构建。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1a780b2e` | (see git log) |
+
+### Status
+
+[OK] **Completed**
