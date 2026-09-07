@@ -46,6 +46,7 @@ import { ConfirmDialog } from "../ConfirmDialog";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../ui/dialog";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "../ui/context-menu";
+import { Portal } from "../ui/Portal";
 import { ChevronRight, Copy, EyeOff, File, FileCode, Folder, FolderOpen, FolderPlus, Pencil, RefreshCw, Search, Trash2, Upload, X } from "../icons";
 import { TERM } from "../stats/termStatsUi";
 import { TerminalPanelHeader } from "../terminal/TerminalPanelHeader";
@@ -1491,7 +1492,10 @@ export function FileExplorerSidebar({ mode = "sidebar", onClosePanel, onBackToPr
 
   return (
     <>
-      <div ref={setMenuPortalContainer} className="ui-file-explorer-sidebar flex h-full min-h-0 flex-col" style={panelStyle} onKeyDown={handleSidebarKeyDown}>
+      <Portal>
+        <div ref={setMenuPortalContainer} data-file-explorer-menu-portal="" style={panelStyle} />
+      </Portal>
+      <div className="ui-file-explorer-sidebar flex h-full min-h-0 flex-col" style={panelStyle} onKeyDown={handleSidebarKeyDown}>
       {terminalFileDragPreview}
       <LiveServerStatusBridge project={project} />
       {mode === "panel" ? (

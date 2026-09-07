@@ -2239,6 +2239,12 @@
   animation: slide-down var(--animate-duration-fast) var(--ease-standard);
 }
 
+/* Radix owns fixed positioning on its Popper wrapper. Keep the content in
+   normal flow so the wrapper measures the complete menu before flip/shift. */
+.context-menu.radix-context-menu-content {
+  position: relative;
+}
+
 [data-theme="dark"] .context-menu {
   outline: 1px solid color-mix(in srgb, var(--border) 26%, transparent);
   box-shadow: 0 14px 34px rgb(0 0 0 / 34%);
@@ -8326,7 +8332,8 @@
   background-color: color-mix(in srgb, var(--term-panel-cyan, #5AC8E0) 13%, transparent);
 }
 
-.ui-file-tree-row[data-selected="true"] {
+.ui-file-tree-row[data-selected="true"],
+.ui-file-tree-row[data-state="open"] {
   background-color: color-mix(in srgb, var(--term-panel-cyan, #5AC8E0) 26%, transparent);
   color: var(--term-panel-fg, #ececec);
   box-shadow: inset 2px 0 0 var(--term-panel-cyan, #5AC8E0);
@@ -8340,7 +8347,8 @@
 }
 
 .ui-file-tree-row[data-ignored="true"]:hover,
-.ui-file-tree-row[data-ignored="true"][data-selected="true"] {
+.ui-file-tree-row[data-ignored="true"][data-selected="true"],
+.ui-file-tree-row[data-ignored="true"][data-state="open"] {
   opacity: 0.75;
 }
 

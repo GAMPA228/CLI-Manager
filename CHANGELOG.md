@@ -66,6 +66,10 @@
 - 文件 Markdown 的源码与格式化预览支持 `Ctrl + 鼠标右键`打开链接，预览同时支持普通点击与键盘激活；HTTP(S)/邮件链接交给系统应用，相对文件、项目根路径和跨文件锚点在当前 Windows、WSL、SSH 或 Worktree 文件上下文内打开。
 - 补齐中文、Emoji、重复标题、引用式链接、自动链接、链接图片、编码路径、项目越界、无效协议、缺失文件/标题以及切换文件时迟到导航等边界处理，并提供中英文错误提示。
 
+### 修复文件浏览器右键菜单遮挡
+
+- 文件浏览器右键菜单改用挂载到应用根级的主题化 Portal 宿主，并让菜单内容留在 Radix Popper 的正常测量流中，恢复对完整菜单宽高的边缘翻转与钳制；菜单在左/右停靠、合并/独立终端辅助面板及项目侧栏任意位置触发时均完整显示，右键目标行在菜单打开期间保持选中高亮，并保留现有终端面板配色、路径格式替换和键盘交互。
+
 ### Tauri 开发构建与缓存优化
 
 - Windows `npm run tauri dev` 预构建主程序与 Codex proxy 时统一 Cargo 的 feature、target、profile、target-dir 和 `TAURI_CONFIG` fingerprint 输入，减少共享 Rust library 的重复构建；源码未变化时继续由 Cargo fingerprint 复用已有产物。

@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const sidebar = read("../src/components/files/FileExplorerSidebar.tsx");
+const contextMenu = read("../src/components/ui/context-menu.tsx");
+const componentStyles = read("../src/styles/components.css");
 const formatter = read("../src/lib/aiPathFormatter.ts");
 const drag = read("../src/lib/terminalFileDrag.ts");
 const terminalInput = read("../src/hooks/useTerminalInput.ts");
@@ -21,6 +23,43 @@ test("terminal tab CLI icons inherit the terminal tab foreground color", () => {
 test("file menus expose relative and absolute path copy actions", () => {
   assert.match(sidebar, /import \{ PathCopyMenu \} from "\.\.\/PathCopyMenu"/);
   assert.equal((sidebar.match(/<PathCopyMenu /g) ?? []).length, 4);
+});
+
+test("file menus portal outside clipping sidebar and panel ancestors", () => {
+  assert.match(sidebar, /import \{ Portal \} from "\.\.\/ui\/Portal"/);
+  assert.match(
+    sidebar,
+    /<Portal>\s*<div ref=\{setMenuPortalContainer\} data-file-explorer-menu-portal="" style=\{panelStyle\} \/>\s*<\/Portal>/,
+  );
+  assert.doesNotMatch(
+    sidebar,
+    /<div ref=\{setMenuPortalContainer\} className="ui-file-explorer-sidebar/,
+  );
+  assert.equal((sidebar.match(/portalContainer=\{menuPortalContainer\}/g) ?? []).length, 4);
+});
+
+test("Radix menu content remains measurable by its Popper wrapper", () => {
+  assert.equal(
+    (contextMenu.match(/context-menu radix-context-menu-content/g) ?? []).length,
+    2,
+  );
+  assert.match(
+    componentStyles,
+    /\.context-menu\.radix-context-menu-content\s*\{\s*position:\s*relative;/,
+  );
+  assert.match(componentStyles, /\.context-menu\s*\{\s*position:\s*fixed;/);
+});
+
+test("an open file context menu highlights its trigger row", () => {
+  assert.equal((sidebar.match(/<ContextMenuTrigger asChild>/g) ?? []).length, 4);
+  assert.match(
+    componentStyles,
+    /\.ui-file-tree-row\[data-selected="true"\],\s*\.ui-file-tree-row\[data-state="open"\]/,
+  );
+  assert.match(
+    componentStyles,
+    /\.ui-file-tree-row\[data-ignored="true"\]\[data-selected="true"\],\s*\.ui-file-tree-row\[data-ignored="true"\]\[data-state="open"\]/,
+  );
 });
 
 test("absolute file paths use the local root or SSH remote root", () => {
