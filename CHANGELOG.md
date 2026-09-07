@@ -1,5 +1,13 @@
 # Changelog
 
+## [TEMP] - 2026-09-07
+
+### WSL AI CLI 图片粘贴与格式扩展
+
+- 内置终端新增 `Alt+V` 图片粘贴桥接：从 Windows 剪贴板读取位图或复制的图片文件，转换为受控附件目录中的 PNG 后再交给 CLI，Codex/Claude 不再依赖 WSL 内的 `wl-paste`、`xclip` 或 PATH 中的 PowerShell。
+- 增加 PNG/APNG、JPEG/JPG/JFIF、GIF、WebP、BMP/DIB、TIFF 和 ICO 的识别与转换；HEIC/HEIF 明确拒绝，无法安全解码的 SVG/AVIF 失败关闭，并保留大小、像素、符号链接和附件数量限制。
+- 为 Claude/Codex、Gemini/Qwen/OpenCode/Kimi/Crush/Pi 及 Aider 增加图片输入能力分级；WSL shell 路径会自动转换为 `/mnt/<drive>/...`，恢复会话时 Claude 也会识别固化的会话工具。
+
 ## [TEMP] - 2026-09-01
 
 ### 修复桌面宠物状态气泡裁剪

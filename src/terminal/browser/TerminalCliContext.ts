@@ -101,9 +101,12 @@ export const usesEscCrComposerNewline = (context: TerminalCliContext): boolean =
 
 export const isClaudeTerminalContext = ({
   projectTool,
+  sessionTool,
   startupCmd,
   titleTool,
 }: TerminalCliContext): boolean => (
+  sessionTool.includes("claude")
+  ||
   projectTool.includes("claude")
   || titleTool.includes("claude")
   || CLAUDE_COMMAND_PATTERN.test(startupCmd)
