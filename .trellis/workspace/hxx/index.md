@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 109
+- **Total Sessions**: 110
 - **Last Active**: 2026-09-07
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1492 | Active |
+| `journal-2.md` | ~1513 | Active |
 | `journal-1.md` | ~2014 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 110 | 2026-09-07 | 修复 Markdown 文件链接与锚点导航 | `3680fa64` | `master` |
 | 109 | 2026-09-07 | 完成 Issue #248 VS Code 式工作区布局控制 | `1a780b2e` | `master` |
 | 108 | 2026-09-04 | 修复历史会话 Markdown 表格渲染 | `25defb59` | `master` |
 | 107 | 2026-09-04 | history-content-sort-codex-title | `dc3e2ddc` | `master` |
