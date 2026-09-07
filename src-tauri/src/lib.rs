@@ -1609,6 +1609,7 @@ pub fn run() {
             commands::live_server::live_server_status,
             commands::live_server::live_server_stop,
             commands::fs::clipboard_read_file_paths,
+            commands::fs::clipboard_attach_image_files,
             commands::fs::check_paths_exist,
             commands::fs::file_get_path_kind,
             commands::fs::file_watch_start,

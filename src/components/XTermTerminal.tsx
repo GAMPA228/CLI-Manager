@@ -614,6 +614,7 @@ export function XTermTerminal({ sessionId, isActive = true, isVisible = true, fo
     attachPasteAndDrop,
     pasteText,
     readClipboardPasteText,
+    readClipboardImagePasteText,
     attachSelection,
     attachIme,
     onCommandSubmitted,
@@ -1709,6 +1710,15 @@ export function XTermTerminal({ sessionId, isActive = true, isVisible = true, fo
           pasteText(terminal, wrapTerminalPasteTextForCtrlShiftV(text));
         }).catch((err) => {
           logError("Failed to read clipboard text", { sessionId, err });
+        });
+        return false;
+      }
+      if (e.type === "keydown" && e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && e.key.toLowerCase() === "v") {
+        e.preventDefault();
+        readClipboardImagePasteText().then((text) => {
+          pasteText(terminal, text);
+        }).catch((err) => {
+          logError("Failed to read clipboard image", { sessionId, err });
         });
         return false;
       }

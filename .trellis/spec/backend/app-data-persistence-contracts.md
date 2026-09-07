@@ -198,17 +198,29 @@ The migration copies missing files and otherwise merges only missing JSON object
 
 ```rust
 file_attach_data(file_name: String, data_base64: String) -> Result<String, String>
+clipboard_attach_image_files() -> Result<ClipboardImageAttachments, String>
 file_cleanup_expired_attachments() -> Result<u64, String>
+
+ClipboardImageAttachments {
+  paths: Vec<String>,
+  had_files: bool,
+  rejected_count: usize,
+  rejection_code: Option<String>,
+}
 ```
 
 - Stable attachment directory: `<home>/.cli-manager/attachments`.
 - `file_attach_data` returns the generated file's absolute native path.
+- `clipboard_attach_image_files` reads Windows `CF_HDROP` itself and returns only generated PNG attachment paths; it accepts no renderer-supplied path.
 
 ### 3. Contracts
 
 - Resolve the attachment root through `app_paths::cli_manager_data_dir()`; do not accept a project path or terminal cwd from the WebView.
 - Keep attachment file-name sanitization, collision suffixes, the 5 MiB decoded-data limit, and the 2-day retention period in Rust.
 - The frontend passes only `fileName` and `dataBase64`, then applies the existing shell-specific quoting to the returned absolute path.
+- `Alt+V` uses the host clipboard bridge. Clipboard bitmap data and supported copied image files are normalized to PNG; WSL shells translate generated drive paths to `/mnt/<drive>/...` before quoting.
+- Copied image files are limited to 8 regular non-symlink files, 5 MiB input/output each and 12,000,000 pixels. Supported decoder inputs are PNG/APNG, JPEG/JFIF, GIF first frame, WebP, BMP/DIB, TIFF and ICO. HEIC/HEIF and currently undecodable SVG/AVIF fail closed.
+- AI CLI image paths use the capability mode in `CLI_TOOL_DESCRIPTORS`: native path, `@path`, Aider `/add path`, or unsupported. Do not infer image support for arbitrary custom commands.
 - Attachment cleanup targets the same global directory and runs at most once per frontend process unless a cleanup attempt fails.
 - Existing project-scoped `.cli-manager/attachments` directories are not migrated or deleted automatically.
 
@@ -223,6 +235,10 @@ file_cleanup_expired_attachments() -> Result<u64, String>
 | Data or attachment directory is a symlink/reparse point or not a directory | Return `path_is_symlink` / `path_not_directory`. |
 | Sanitized name already exists | Add a numeric suffix without overwriting the existing file. |
 | Attachment directory does not exist during cleanup | Return `0`. |
+| CF_HDROP is absent | Return `hadFiles=false` so the frontend may try clipboard bitmap data. |
+| Clipboard file has an unsupported extension, is corrupt, or is not regular | Reject it and return a stable `rejectionCode`; never return its source path. |
+| Clipboard image exceeds 5 MiB or 12,000,000 pixels | Return `clipboard_image_too_large` / `image_dimensions_too_large`. |
+| Current CLI has no image paste capability | Show localized `clipboard_image_tool_unsupported` feedback and paste no path. |
 
 ### 5. Good/Base/Bad Cases
 
@@ -231,6 +247,8 @@ file_cleanup_expired_attachments() -> Result<u64, String>
 - Good: cleanup skips directories, symlinks, and files newer than 2 days.
 - Bad: accepting `rootPath` from the frontend and recreating `<project>/.cli-manager/attachments`.
 - Bad: returning a project-relative path that the frontend must join with project or session state.
+- Good: a Windows attachment path returned to a WSL terminal is pasted as a quoted `/mnt/c/...` path.
+- Bad: accepting a clipboard file path argument from the WebView or sending a rejected host path to WSL.
 
 ### 6. Tests Required
 
@@ -238,6 +256,8 @@ file_cleanup_expired_attachments() -> Result<u64, String>
 - Rust tests preserve attachment name sanitization, collision handling, decoded-size limits, and cleanup retention behavior when those helpers change.
 - Run `cargo check` after changing the Rust IPC contract.
 - Run `npx tsc --noEmit` after changing the frontend invoke payload or returned-path handling.
+- Rust tests cover common extension aliases and verify BMP input becomes a PNG attachment with preserved dimensions.
+- `scripts/wslImagePaste.test.mjs` asserts the `Alt+V` bridge, capability tiers and WSL path conversion remain wired.
 
 ### 7. Wrong vs Correct
 
@@ -254,5 +274,7 @@ This leaks project/session state into an app-owned persistence decision and crea
 ```typescript
 const absolutePath = await invoke<string>("file_attach_data", { fileName, dataBase64 });
 ```
+
+For copied files, the correct boundary is `invoke("clipboard_attach_image_files")` with no path arguments. Passing `{ path }` would expose an arbitrary host-file read primitive to the renderer.
 
 Rust owns the stable app-data path and returns the complete path required by the terminal.
