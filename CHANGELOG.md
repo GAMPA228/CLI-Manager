@@ -1,14 +1,12 @@
 # Changelog
 
-## [TEMP] - 2026-09-07
+## [V1.3.9] - 2026-09-07
 
 ### WSL AI CLI 图片粘贴与格式扩展
 
 - 内置终端新增 `Alt+V` 图片粘贴桥接：从 Windows 剪贴板读取位图或复制的图片文件，转换为受控附件目录中的 PNG 后再交给 CLI，Codex/Claude 不再依赖 WSL 内的 `wl-paste`、`xclip` 或 PATH 中的 PowerShell。
 - 增加 PNG/APNG、JPEG/JPG/JFIF、GIF、WebP、BMP/DIB、TIFF 和 ICO 的识别与转换；HEIC/HEIF 明确拒绝，无法安全解码的 SVG/AVIF 失败关闭，并保留大小、像素、符号链接和附件数量限制。
 - 为 Claude/Codex、Gemini/Qwen/OpenCode/Kimi/Crush/Pi 及 Aider 增加图片输入能力分级；WSL shell 路径会自动转换为 `/mnt/<drive>/...`，恢复会话时 Claude 也会识别固化的会话工具。
-
-## [TEMP] - 2026-09-01
 
 ### 修复桌面宠物状态气泡裁剪
 
@@ -54,8 +52,6 @@
 - 修复本地 Codex 托管 app-server 只继承 Provider 地址、密钥和模型参数子集，导致同一 `cliSessionId` 与本地 TUI 的快速服务、压缩等运行配置漂移并可能长期无回复的问题；代理现在结构化加载 Native Provider 生成的完整 profile，将其展开为 app-server 支持的 `-c` 覆盖后再锁定登记 Provider/模型。普通 Codex 命令仍使用原 profile，超出 Windows 安全命令行预算时明确失败且不截断。
 - cc-connect 日志开启时新增 Codex app-server initialize、thread/resume、turn/start、完成、错误与审批阶段诊断；日志关闭时不输出该诊断，且任何模式均不记录用户消息、响应正文、文件内容或 Provider 密钥。Telegram、飞书、微信和企业微信共享同一链路，SSH 与其他 Agent 托管不受影响。
 - 修复 Codex 子 Agent 已经继续执行或完成工具调用后，延迟 15 秒再次弹出待审批提醒的问题：Codex Hook 现在通过静默的 `ToolStart` / `ToolStop` 生命周期事件在共享后端入口消解旧审批，支持事件乱序、缺少 tool ID 时的精确工具名关联和多子 Agent 隔离；内部进度不会进入终端、桌面宠物、toast、任务栏、系统/第三方或远程托管通知。真实未解决审批仍只投递一次，SSH 审批保持即时投递，WSL 不读取 UNC 转录元数据。升级后旧 Codex Hook 会显示为部分安装，重新安装 Hook 即可补齐生命周期事件与信任状态。
-
-## [V1.3.9] - 2026-08-31
 
 ### 会话历史内容排序与 Codex 标题
 
