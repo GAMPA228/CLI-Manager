@@ -1490,3 +1490,24 @@ v1.3.9-history-detail-ordering-persistence-codex-thread-name-and-descending-tran
 ### Status
 
 [OK] **Completed**
+
+
+## Session 110: 修复 Markdown 文件链接与锚点导航
+
+**Date**: 2026-09-07
+**Task**: 修复 Markdown 文件链接与锚点导航
+**Branch**: `master`
+
+### Summary
+
+文件浏览器 Markdown 源码和预览现支持项目范围内文件链接、内部锚点及外部系统链接导航；补齐 Ctrl+右键、中文/Emoji 标题、跨文件与迟到请求保护，并完成 V1.3.9 文档和回归测试。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3680fa64` | (see git log) |
+
+### Status
+
+[OK] **Completed**
