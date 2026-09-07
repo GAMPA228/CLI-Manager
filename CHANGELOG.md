@@ -60,6 +60,12 @@
 - 修复历史会话中完整 `md` / `markdown` 源码围栏被当作代码块展示的问题；GFM 表格现在直接渲染为表格，普通代码块和嵌套代码围栏仍保持代码展示。
 - 历史 Markdown 代码块的容器、标题栏和边框改用应用主题变量，浅色与深色主题切换后均保持可读；终端预览继续使用独立终端主题。
 
+### 文件浏览器 Markdown 链接导航
+
+- 修复文件 Markdown 预览将内部锚点交给 Tauri 页面导航、导致打开 `tauri.localhost/#...` 的问题；当前文档标题在对应预览内滚动定位，源码视图定位到标题行，不再修改应用 URL。
+- 文件 Markdown 的源码与格式化预览支持 `Ctrl + 鼠标右键`打开链接，预览同时支持普通点击与键盘激活；HTTP(S)/邮件链接交给系统应用，相对文件、项目根路径和跨文件锚点在当前 Windows、WSL、SSH 或 Worktree 文件上下文内打开。
+- 补齐中文、Emoji、重复标题、引用式链接、自动链接、链接图片、编码路径、项目越界、无效协议、缺失文件/标题以及切换文件时迟到导航等边界处理，并提供中英文错误提示。
+
 ### Tauri 开发构建与缓存优化
 
 - Windows `npm run tauri dev` 预构建主程序与 Codex proxy 时统一 Cargo 的 feature、target、profile、target-dir 和 `TAURI_CONFIG` fingerprint 输入，减少共享 Rust library 的重复构建；源码未变化时继续由 Cargo fingerprint 复用已有产物。
