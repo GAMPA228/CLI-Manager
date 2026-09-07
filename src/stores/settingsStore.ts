@@ -1473,7 +1473,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         : DEFAULTS.terminalSidePanelSingleOpen;
     entries.terminalSidePanelSkin = migrateTerminalSidePanelSkin(entries.terminalSidePanelSkin);
     entries.terminalPanelWidths = migrateTerminalPanelWidths(entries.terminalPanelWidths);
-    entries.workspaceLayout = migrateWorkspaceLayout(entries.workspaceLayout);
+    const storedWorkspaceLayout = entries.workspaceLayout;
+    const workspaceLayout = migrateWorkspaceLayout(storedWorkspaceLayout);
+    entries.workspaceLayout = workspaceLayout;
+    if (
+      storedWorkspaceLayout !== undefined
+      && JSON.stringify(storedWorkspaceLayout) !== JSON.stringify(workspaceLayout)
+    ) {
+      persistSetting("workspaceLayout", workspaceLayout);
+    }
     entries.terminalStatsCardVisibility = migrateTerminalStatsCardVisibility(entries.terminalStatsCardVisibility);
     entries.terminalStatsCardOrder = migrateTerminalStatsCardOrder(entries.terminalStatsCardOrder);
     entries.systemResourceCardVisibility = migrateSystemResourceCardVisibility(entries.systemResourceCardVisibility);

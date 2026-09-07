@@ -15,10 +15,11 @@ export function TerminalWorkspaceFrame({ dockSide, panels, actions, children }: 
 
   return (
     <>
+      {dockSide === "left" && <Fragment key="workspace-actions">{actions}</Fragment>}
       {dockSide === "left" && panelSlot}
       <Fragment key="workspace-center">{children}</Fragment>
       {dockSide === "right" && panelSlot}
-      <Fragment key="workspace-actions">{actions}</Fragment>
+      {dockSide === "right" && <Fragment key="workspace-actions">{actions}</Fragment>}
     </>
   );
 }

@@ -11,8 +11,12 @@ const layoutComponentSource = readFileSync(
   new URL("../src/components/workspace/WorkspanTerminalLayout.tsx", import.meta.url),
   "utf8",
 );
-const settingsSource = readFileSync(
-  new URL("../src/components/settings/pages/WorkspaceLayoutSection.tsx", import.meta.url),
+const controlsSource = readFileSync(
+  new URL("../src/components/layout/WorkspaceLayoutControls.tsx", import.meta.url),
+  "utf8",
+);
+const menuSource = readFileSync(
+  new URL("../src/components/layout/WorkspaceLayoutMenu.tsx", import.meta.url),
   "utf8",
 );
 const stylesSource = readFileSync(new URL("../src/styles/workspace-layout.css", import.meta.url), "utf8");
@@ -24,6 +28,8 @@ test("top-level Workspan tabs use one direction-aware document-flow slot", () =>
   assert.match(tabsSource, /<WorkspanTerminalLayout/);
   assert.match(layoutComponentSource, /key="workspan-tabbar"/);
   assert.match(layoutComponentSource, /key="terminal-body"/);
+  assert.match(layoutComponentSource, /tabBarVisible: boolean/);
+  assert.match(layoutComponentSource, /ui-workspan-tabbar-slot/);
   assert.match(layoutComponentSource, /position === "top" \? topToBottom : bottomToTop/);
   assert.match(tabBarSource, /<SortableContext/);
   assert.match(tabBarSource, /data-workspan-tabbar-position=\{position\}/);
@@ -41,13 +47,13 @@ test("bottom overflow list opens toward the terminal content", () => {
 
 test("the persisted layout contract keeps top as the default and validates bottom", () => {
   assert.match(layoutSource, /workspanTabBarPosition: WorkspanTabBarPosition/);
+  assert.match(layoutSource, /workspanTabBarVisible: boolean/);
   assert.match(layoutSource, /workspanTabBarPosition: "top"/);
   assert.match(layoutSource, /raw\.workspanTabBarPosition === "bottom"/);
-  assert.match(settingsSource, /settings\.workspaceLayout\.workspanTabBarPosition\.label/);
-  assert.match(settingsSource, /TAB_POSITION_OPTIONS/);
-  assert.match(settingsSource, /settings\.workspaceLayout\.reset/);
-  assert.match(i18nSource, /"settings\.workspaceLayout\.tab\.top": "顶部"/);
-  assert.match(i18nSource, /"settings\.workspaceLayout\.tab\.bottom": "Bottom"/);
+  assert.match(controlsSource, /workspanTabBarPosition/);
+  assert.match(menuSource, /workspaceLayout\.controls\.reset/);
+  assert.match(i18nSource, /"workspaceLayout\.controls\.tabsTop": "Tab 栏置于顶部"/);
+  assert.match(i18nSource, /"workspaceLayout\.controls\.tabsBottom": "Place tabs at the bottom"/);
 });
 
 test("pane-level terminal tab ownership remains outside the top-level docking slot", () => {

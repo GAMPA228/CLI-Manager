@@ -29,7 +29,6 @@ import {
 } from "../../../stores/settingsStore";
 import { useI18n, type TranslationKey } from "../../../lib/i18n";
 import { DND_ACTIVATION_CONSTRAINT, DND_SORTABLE_TRANSITION } from "../../../lib/dragInteraction";
-import { WorkspaceLayoutSection } from "./WorkspaceLayoutSection";
 
 const SIDEBAR_DENSITY_OPTIONS: { value: SidebarDensity; labelKey: TranslationKey; descriptionKey: TranslationKey }[] = [
   {
@@ -427,8 +426,6 @@ export function SidebarSettingsPage() {
           </Card>
         </Stack>
       </section>
-
-      <WorkspaceLayoutSection />
 
       <section className="ui-surface-card rounded-2xl border border-border p-4">
         <Stack gap="md">

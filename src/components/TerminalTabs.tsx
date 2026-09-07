@@ -22,6 +22,7 @@ import { SortableContext, arrayMove, horizontalListSortingStrategy, useSortable,
 import { CSS } from "@dnd-kit/utilities";
 import { useTerminalStore, type SplitTerminalOptions, type TabNotificationState } from "../stores/terminalStore";
 import { TERMINAL_PANEL_WIDTH_DEFAULTS, useSettingsStore } from "../stores/settingsStore";
+import { updateWorkspaceLayout } from "../lib/workspaceLayout";
 import { useWorktreeStore } from "../stores/worktreeStore";
 import { useProjectStore } from "../stores/projectStore";
 import { useSshHostStore } from "../stores/sshHostStore";
@@ -2545,7 +2546,9 @@ export function TerminalTabs({
   }, []);
   const terminalBackgroundImagePath = useSettingsStore((s) => s.terminalBackground.imagePath);
   const terminalSidePanelSide = useSettingsStore((s) => s.workspaceLayout.terminalSidePanelSide);
+  const terminalSidePanelVisible = useSettingsStore((s) => s.workspaceLayout.terminalSidePanelVisible);
   const workspanTabBarPosition = useSettingsStore((s) => s.workspaceLayout.workspanTabBarPosition);
+  const workspanTabBarVisible = useSettingsStore((s) => s.workspaceLayout.workspanTabBarVisible);
   const workspanEnabled = useSettingsStore((s) => s.workspanEnabled);
   const terminalToolbarVisibility = useSettingsStore((s) => s.terminalToolbarVisibility);
   const terminalToolbarOrder = useSettingsStore((s) => s.terminalToolbarOrder);
@@ -2555,6 +2558,15 @@ export function TerminalTabs({
   const terminalSidePanelSingleOpen = useSettingsStore((s) => s.terminalSidePanelSingleOpen);
   const terminalSidePanelSkin = useSettingsStore((s) => s.terminalSidePanelSkin);
   const updateSettings = useSettingsStore((s) => s.update);
+  const ensureTerminalSidePanelVisible = useCallback(() => {
+    const current = useSettingsStore.getState().workspaceLayout;
+    if (current.terminalSidePanelVisible) return false;
+    void updateSettings(
+      "workspaceLayout",
+      updateWorkspaceLayout(current, { terminalSidePanelVisible: true }),
+    );
+    return true;
+  }, [updateSettings]);
   const openFileProject = useFileExplorerStore((s) => s.openProject);
   const revealFilePath = useFileExplorerStore((s) => s.revealPath);
   const openFileEditorPane = useTerminalStore((s) => s.openFileEditorPane);
@@ -2878,13 +2890,17 @@ export function TerminalTabs({
       observer?.disconnect();
       if (frameId !== null) window.cancelAnimationFrame(frameId);
     };
-  }, [updateWorkspanTabOverflow, workspanEnabled, workspanTabSignature]);
+  }, [updateWorkspanTabOverflow, workspanEnabled, workspanTabBarVisible, workspanTabSignature]);
 
   useEffect(() => {
     if (!workspanTabOverflow.isOverflowing || workspanTabOverflow.hiddenIds.length === 0) {
       setWorkspanTabListOpen(false);
     }
   }, [workspanTabOverflow.hiddenIds.length, workspanTabOverflow.isOverflowing]);
+
+  useEffect(() => {
+    if (!workspanTabBarVisible) setWorkspanTabListOpen(false);
+  }, [workspanTabBarVisible]);
 
   useEffect(() => {
     if (!effectiveActiveWorkspanId) return;
@@ -3126,13 +3142,14 @@ export function TerminalTabs({
     closeHistory();
     setActiveWorkspaceTab("terminal");
     setActive(sessionId);
+    ensureTerminalSidePanelVisible();
     if (sidePanelMerged) {
       setSidePanelTab("git");
       setSidePanelOpen(true);
       return;
     }
     setGitOpen(true);
-  }, [closeHistory, rejectMissingSessionWorktree, sessions, setActive, sidePanelMerged]);
+  }, [closeHistory, ensureTerminalSidePanelVisible, rejectMissingSessionWorktree, sessions, setActive, sidePanelMerged]);
 
   const handleOpenWorktreeHistory = useCallback((project: Project, worktree: WorktreeRecord) => {
     if (rejectMissingWorktree(worktree)) return;
@@ -3370,6 +3387,7 @@ export function TerminalTabs({
 
   const handleToggleStatsPanel = useCallback(async () => {
     if (statsPanelActive) {
+      if (ensureTerminalSidePanelVisible()) return;
       if (sidePanelMerged) setSidePanelOpen(false);
       else setStatsOpen(false);
       return;
@@ -3378,6 +3396,7 @@ export function TerminalTabs({
     if (rejectUnsupportedCapability(project, "statistics")) return;
     const allowed = await ensureStatsPanelAllowed();
     if (!allowed) return;
+    ensureTerminalSidePanelVisible();
     if (terminalSidePanelSingleOpen) {
       closeHistory();
       setActiveWorkspaceTab("terminal");
@@ -3395,10 +3414,11 @@ export function TerminalTabs({
       }
       setStatsOpen(true);
     }
-  }, [closeHistory, ensureStatsPanelAllowed, panelSession, projectById, rejectUnsupportedCapability, sidePanelMerged, statsPanelActive, terminalSidePanelSingleOpen]);
+  }, [closeHistory, ensureStatsPanelAllowed, ensureTerminalSidePanelVisible, panelSession, projectById, rejectUnsupportedCapability, sidePanelMerged, statsPanelActive, terminalSidePanelSingleOpen]);
 
   const handleToggleSystemResourcesPanel = useCallback(() => {
     if (systemResourcesPanelActive) {
+      if (ensureTerminalSidePanelVisible()) return;
       if (sidePanelMerged) setSidePanelOpen(false);
       else setSystemResourcesOpen(false);
       return;
@@ -3407,6 +3427,7 @@ export function TerminalTabs({
       closeHistory();
       setActiveWorkspaceTab("terminal");
     }
+    ensureTerminalSidePanelVisible();
     if (sidePanelMerged) {
       setSidePanelTab("systemResources");
       setSidePanelOpen(true);
@@ -3420,10 +3441,11 @@ export function TerminalTabs({
       }
       setSystemResourcesOpen(true);
     }
-  }, [closeHistory, sidePanelMerged, systemResourcesPanelActive, terminalSidePanelSingleOpen]);
+  }, [closeHistory, ensureTerminalSidePanelVisible, sidePanelMerged, systemResourcesPanelActive, terminalSidePanelSingleOpen]);
 
   const handleToggleProviderPanel = useCallback(() => {
     if (providersPanelActive) {
+      if (ensureTerminalSidePanelVisible()) return;
       if (sidePanelMerged) setSidePanelOpen(false);
       else setProvidersOpen(false);
       return;
@@ -3432,6 +3454,7 @@ export function TerminalTabs({
       closeHistory();
       setActiveWorkspaceTab("terminal");
     }
+    ensureTerminalSidePanelVisible();
     if (sidePanelMerged) {
       setSidePanelTab("providers");
       setSidePanelOpen(true);
@@ -3446,16 +3469,18 @@ export function TerminalTabs({
       }
       setProvidersOpen(true);
     }
-  }, [closeHistory, providersPanelActive, sidePanelMerged, terminalSidePanelSingleOpen]);
+  }, [closeHistory, ensureTerminalSidePanelVisible, providersPanelActive, sidePanelMerged, terminalSidePanelSingleOpen]);
 
   const handleToggleGitChangesPanel = useCallback(() => {
     if (gitPanelActive) {
+      if (ensureTerminalSidePanelVisible()) return;
       if (sidePanelMerged) setSidePanelOpen(false);
       else setGitOpen(false);
       return;
     }
     const project = panelSession?.projectId ? projectById.get(panelSession.projectId) : null;
     if (project?.environment_type !== "ssh" && rejectUnsupportedCapability(project, "git")) return;
+    ensureTerminalSidePanelVisible();
     if (sidePanelMerged) {
       if (terminalSidePanelSingleOpen) {
         closeHistory();
@@ -3477,16 +3502,18 @@ export function TerminalTabs({
       }
       setGitOpen(true);
     }
-  }, [closeHistory, gitPanelActive, panelSession, projectById, rejectUnsupportedCapability, sidePanelMerged, terminalSidePanelSingleOpen]);
+  }, [closeHistory, ensureTerminalSidePanelVisible, gitPanelActive, panelSession, projectById, rejectUnsupportedCapability, sidePanelMerged, terminalSidePanelSingleOpen]);
 
   const handleToggleReplayPanel = useCallback(() => {
     if (replayPanelActive) {
+      if (ensureTerminalSidePanelVisible()) return;
       if (sidePanelMerged) setSidePanelOpen(false);
       else setReplayOpen(false);
       return;
     }
     const project = panelSession?.projectId ? projectById.get(panelSession.projectId) : null;
     if (rejectUnsupportedCapability(project, "history")) return;
+    ensureTerminalSidePanelVisible();
     if (sidePanelMerged) {
       if (terminalSidePanelSingleOpen) {
         closeHistory();
@@ -3508,7 +3535,7 @@ export function TerminalTabs({
       }
       setReplayOpen(true);
     }
-  }, [closeHistory, panelSession, projectById, rejectUnsupportedCapability, replayPanelActive, sidePanelMerged, terminalSidePanelSingleOpen]);
+  }, [closeHistory, ensureTerminalSidePanelVisible, panelSession, projectById, rejectUnsupportedCapability, replayPanelActive, sidePanelMerged, terminalSidePanelSingleOpen]);
 
   const syncFilePanelProject = useCallback(async (project: Project) => {
     const preserveCurrentFilePanel = consumeTerminalFileDragPanelSyncSuppression();
@@ -3540,6 +3567,7 @@ export function TerminalTabs({
   const openFilesPanelForProject = useCallback(async (project: Project): Promise<boolean> => {
     const allowed = await syncFilePanelProject(project);
     if (!allowed) return false;
+    ensureTerminalSidePanelVisible();
     if (terminalSidePanelSingleOpen) {
       closeHistory();
       setActiveWorkspaceTab("terminal");
@@ -3558,16 +3586,17 @@ export function TerminalTabs({
     }
     setFilesOpen(true);
     return true;
-  }, [closeHistory, sidePanelMerged, syncFilePanelProject, terminalSidePanelSingleOpen]);
+  }, [closeHistory, ensureTerminalSidePanelVisible, sidePanelMerged, syncFilePanelProject, terminalSidePanelSingleOpen]);
 
   const handleToggleFilesPanel = useCallback(async () => {
     if (filesPanelActive) {
+      if (ensureTerminalSidePanelVisible()) return;
       closeFilesPanel();
       return;
     }
     if (!filePanelProject) return;
     void openFilesPanelForProject(filePanelProject);
-  }, [closeFilesPanel, filePanelProject, filesPanelActive, openFilesPanelForProject]);
+  }, [closeFilesPanel, ensureTerminalSidePanelVisible, filePanelProject, filesPanelActive, openFilesPanelForProject]);
 
   useEffect(() => {
     const handleTerminalFileNavigation = (event: Event) => {
@@ -4018,7 +4047,7 @@ export function TerminalTabs({
       ),
       templates: (
         <CommandTemplatePanel
-          popoverSide="left"
+          popoverSide={terminalSidePanelSide === "left" ? "right" : "left"}
           toneClassName="ui-action-template"
           popoverStyle={terminalActionSidebarStyle}
         />
@@ -4126,6 +4155,7 @@ export function TerminalTabs({
           tasks={backgroundTasks}
           onRefresh={refreshBackgroundTasks}
           showText={terminalToolbarVisibility.showText}
+          popoverSide={terminalSidePanelSide === "left" ? "right" : "left"}
           popoverStyle={terminalPopoverStyle}
         />
       ),
@@ -4158,6 +4188,7 @@ export function TerminalTabs({
           className="ui-terminal-actions ui-terminal-action-sidebar flex shrink-0 flex-col items-center gap-2"
           aria-label={t("terminal.toolbar.actions")}
           data-show-text={terminalToolbarVisibility.showText ? "true" : undefined}
+          data-dock-side={terminalSidePanelSide}
           style={terminalActionSidebarStyle}
         >
           <SortableContext items={visibleButtons.map((b) => b.id)} strategy={verticalListSortingStrategy}>
@@ -4224,6 +4255,7 @@ export function TerminalTabs({
     terminalToolbarVisibility,
     terminalActionSidebarStyle,
     terminalPopoverStyle,
+    terminalSidePanelSide,
     toolbarSensors,
   ]);
 
@@ -4475,6 +4507,7 @@ export function TerminalTabs({
           className="ui-terminal-well absolute inset-0 min-h-0 flex"
           data-terminal-mode="independent"
           data-terminal-theme-tone={terminalThemeTone}
+          data-terminal-side-panel-visible={terminalSidePanelVisible ? "true" : "false"}
           style={{ display: historyActive ? "none" : "flex" }}
         >
           <TerminalWorkspaceFrame
@@ -4591,6 +4624,7 @@ export function TerminalTabs({
               >
                 <WorkspanTerminalLayout
                   position={workspanTabBarPosition}
+                  tabBarVisible={workspanTabBarVisible}
                   tabBar={workspanEnabled ? (
                     <WorkspanTabBar
                     position={workspanTabBarPosition}

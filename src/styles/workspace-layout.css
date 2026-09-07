@@ -21,12 +21,33 @@
   flex-direction: column;
 }
 
+.ui-workspace-main-layout[data-project-sidebar-side="right"] > .ui-sidebar-shell {
+  order: 2;
+  border-right: 0;
+  border-left: 1px solid color-mix(in srgb, var(--border) 18%, transparent);
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--border) 12%, transparent);
+}
+
+.ui-workspace-main-layout[data-project-sidebar-side="right"] > .ui-main-shell {
+  order: 1;
+}
+
+[data-theme="light"] .ui-workspace-main-layout[data-project-sidebar-side="right"] > .ui-sidebar-shell {
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--border) 12%, transparent);
+}
+
 .ui-workspan-terminal-body {
   display: flex;
   min-width: 0;
   min-height: 0;
   flex: 1 1 0%;
   flex-direction: column;
+}
+
+/* Keep panel content mounted while letting the title-bar control reclaim the
+   terminal width immediately. This preserves panel-local state and effects. */
+.ui-terminal-well[data-terminal-side-panel-visible="false"] > .ui-terminal-side-panel-frame {
+  display: none;
 }
 
 /* Auxiliary panels keep the separator on the edge facing the terminal. */

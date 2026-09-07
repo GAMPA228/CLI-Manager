@@ -5183,6 +5183,10 @@
     box-shadow var(--animate-duration-fast) var(--ease-standard);
 }
 
+.ui-terminal-action-sidebar[data-dock-side="left"] {
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--term-panel-border, var(--terminal-theme-foreground, #f8fafc)) 52%, transparent);
+}
+
 .ui-terminal-action-sidebar::before {
   content: "";
   position: absolute;
@@ -5242,6 +5246,18 @@
 .ui-file-tooltip[data-tooltip]:focus-visible::after {
   opacity: 1;
   visibility: visible;
+  transform: translate(0, -50%);
+}
+
+.ui-terminal-action-sidebar[data-dock-side="left"] .ui-terminal-action-sort-item[data-tooltip]::after {
+  right: auto;
+  left: calc(100% + 8px);
+  transform: translate(-4px, -50%);
+}
+
+.ui-terminal-action-sidebar[data-dock-side="left"] .ui-terminal-action-sort-item[data-tooltip]:hover::after,
+.ui-terminal-action-sidebar[data-dock-side="left"] .ui-terminal-action-sort-item[data-tooltip]:focus-visible::after,
+.ui-terminal-action-sidebar[data-dock-side="left"] .ui-terminal-action-sort-item[data-tooltip]:has(:focus-visible)::after {
   transform: translate(0, -50%);
 }
 

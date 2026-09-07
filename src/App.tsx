@@ -544,6 +544,7 @@ function App() {
   const uiFontSize = useSettingsStore((s) => s.uiFontSize);
   const uiTextColor = useSettingsStore((s) => s.uiTextColor);
   const viewMode = useSettingsStore((s) => s.viewMode);
+  const projectSidebarSide = useSettingsStore((s) => s.workspaceLayout.projectSidebarSide);
   const closeBehavior = useSettingsStore((s) => s.closeBehavior);
   const exitWithRunningTasksBehavior = useSettingsStore((s) => s.exitWithRunningTasksBehavior);
   const ccusageAnalyticsEnabled = useSettingsStore((s) => s.ccusageAnalyticsEnabled);
@@ -1759,17 +1760,22 @@ function App() {
               onOpenSettings={handleOpenSettings}
               onOpenStats={handleOpenStats}
               compactMode
+              dockSide={projectSidebarSide}
               projectScopedTerminalViewEnabled={projectScopedTerminalViewEnabled}
               terminalScope={terminalScope}
               onTerminalScopeChange={setTerminalScope}
             />
           </div>
         ) : (
-          <div className="flex min-h-0 h-full">
+          <div
+            className="ui-workspace-main-layout flex min-h-0 h-full"
+            data-project-sidebar-side={projectSidebarSide}
+          >
             {!terminalFullscreen && (
               <Sidebar
                 onOpenSettings={handleOpenSettings}
                 onOpenStats={handleOpenStats}
+                dockSide={projectSidebarSide}
                 projectScopedTerminalViewEnabled={projectScopedTerminalViewEnabled}
                 terminalScope={terminalScope}
                 onTerminalScopeChange={setTerminalScope}
