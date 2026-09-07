@@ -1,6 +1,9 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Archive, Boxes, FileClock, GitCompareArrows, GitFork, Network, RefreshCw, SearchCode, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Modal } from "@mantine/core";
+import { useAppConfirm } from "../../ui/useAppConfirm";
+import { useAppPrompt } from "../../ui/useAppPrompt";
 import { toast } from "sonner";
 import type { GitTransport } from "../../../lib/gitTransport";
 import type {
@@ -52,6 +55,8 @@ function remoteWebUrl(value: string): string | null {
 
 export function GitPowerToolsDialog({ open, transport, repositoryId, branches, tags, commits, branchStatus, onClose, onChanged }: GitPowerToolsDialogProps) {
   const { language, t } = useI18n();
+  const { confirm, confirmDialog } = useAppConfirm({ zIndex: 220 });
+  const { prompt, promptDialog } = useAppPrompt();
   const [tab, setTab] = useState<ToolTab>("stash");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -75,24 +80,44 @@ export function GitPowerToolsDialog({ open, transport, repositoryId, branches, t
   const [bisectGood, setBisectGood] = useState("");
   const [bisectBad, setBisectBad] = useState("HEAD");
   const [remoteBranch, setRemoteBranch] = useState("");
+  const readGeneration = useRef(0);
+  const mutationBusy = useRef(false);
+  const context = useMemo(() => ({ open, transport, repositoryId }), [open, transport, repositoryId]);
+  const currentContext = useRef(context);
+  useEffect(() => {
+    currentContext.current = context;
+    readGeneration.current += 1;
+    setStashes([]);
+    setRemotes([]);
+    setReflog([]);
+    setFileHistory([]);
+    setBlame([]);
+    setSubmodules([]);
+    setBisect({ active: false, summary: "" });
+    return () => { readGeneration.current += 1; };
+  }, [context]);
 
   const dateFormatter = useMemo(() => new Intl.DateTimeFormat(language === "zh-CN" ? "zh-CN" : "en-US", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }), [language]);
   const canRewrite = commits.length > rewriteCount;
 
   const reload = useCallback(async () => {
     if (!open || !transport || repositoryId === null) return;
+    const generation = ++readGeneration.current;
+    const publish = <T,>(setValue: (value: T) => void, value: T) => {
+      if (generation === readGeneration.current) setValue(value);
+    };
     setLoading(true);
     setError(null);
     try {
-      if (tab === "stash") setStashes((await transport.listStashes(repositoryId)).value);
-      if (tab === "remotes") setRemotes((await transport.listRemotes(repositoryId)).value);
-      if (tab === "reflog") setReflog((await transport.listReflog(repositoryId)).value);
-      if (tab === "bisect") setBisect((await transport.getBisectStatus(repositoryId)).value);
-      if (tab === "submodules") setSubmodules((await transport.listSubmodules(repositoryId)).value);
+      if (tab === "stash") publish(setStashes, (await transport.listStashes(repositoryId)).value);
+      if (tab === "remotes") publish(setRemotes, (await transport.listRemotes(repositoryId)).value);
+      if (tab === "reflog") publish(setReflog, (await transport.listReflog(repositoryId)).value);
+      if (tab === "bisect") publish(setBisect, (await transport.getBisectStatus(repositoryId)).value);
+      if (tab === "submodules") publish(setSubmodules, (await transport.listSubmodules(repositoryId)).value);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      publish(setError, reason instanceof Error ? reason.message : String(reason));
     } finally {
-      setLoading(false);
+      publish(setLoading, false);
     }
   }, [open, repositoryId, tab, transport]);
 
@@ -103,33 +128,48 @@ export function GitPowerToolsDialog({ open, transport, repositoryId, branches, t
   }, [commits, rewriteCount]);
 
   const mutate = useCallback(async (operation: () => Promise<unknown>, confirmKey?: string) => {
-    if (busy) return;
-    if (confirmKey && !window.confirm(t(confirmKey as Parameters<typeof t>[0]))) return;
+    if (mutationBusy.current || !open || !transport || repositoryId === null || context !== currentContext.current) return;
+    mutationBusy.current = true;
     setBusy(true);
     setError(null);
     try {
+      if (confirmKey && !await confirm({ title: t("git.tools.title"), message: t(confirmKey as Parameters<typeof t>[0]), danger: true })) return;
+      if (context !== currentContext.current) return;
       await operation();
+      if (context !== currentContext.current) return;
       toast.success(t("git.tools.operationDone"));
       onChanged();
       await reload();
     } catch (reason) {
+      if (context !== currentContext.current) return;
       const message = reason instanceof Error ? reason.message : String(reason);
       setError(message);
       toast.error(t("git.tools.operationFailed"), { description: message });
     } finally {
+      mutationBusy.current = false;
       setBusy(false);
     }
-  }, [busy, onChanged, reload, t]);
+  }, [confirm, context, onChanged, open, reload, repositoryId, t, transport]);
 
   const loadFileData = useCallback(async (mode: "history" | "blame") => {
     if (!transport || repositoryId === null || !filePath.trim()) return;
+    const generation = ++readGeneration.current;
     setLoading(true); setError(null); setFileMode(mode);
     try {
-      if (mode === "history") setFileHistory((await transport.fileHistory(repositoryId, filePath.trim())).value);
-      else setBlame((await transport.blameFile(repositoryId, filePath.trim())).value);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
-    finally { setLoading(false); }
+      if (mode === "history") {
+        const result = await transport.fileHistory(repositoryId, filePath.trim());
+        if (generation === readGeneration.current) setFileHistory(result.value);
+      } else {
+        const result = await transport.blameFile(repositoryId, filePath.trim());
+        if (generation === readGeneration.current) setBlame(result.value);
+      }
+    } catch (reason) {
+      if (generation === readGeneration.current) setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      if (generation === readGeneration.current) setLoading(false);
+    }
   }, [filePath, repositoryId, transport]);
+
 
   if (!open) return null;
   const tabs: { id: ToolTab; icon: React.ReactNode; label: string }[] = [
@@ -144,8 +184,11 @@ export function GitPowerToolsDialog({ open, transport, repositoryId, branches, t
   const remoteNames = remotes.map((remote) => remote.name);
 
   return (
-    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/65 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="flex h-[min(760px,86vh)] w-[min(1040px,94vw)] min-h-0 overflow-hidden rounded-md border shadow-2xl" style={{ backgroundColor: TERM.bg, borderColor: TERM.border }} aria-label={t("git.tools.title")}>
+    <>
+      {confirmDialog}
+      {promptDialog}
+      <Modal opened={open} onClose={onClose} title={t("git.tools.title")} centered size={1040} zIndex={95} padding={0}>
+      <section className="flex h-[min(760px,86vh)] w-full min-h-0 overflow-hidden rounded-md border shadow-2xl outline-none" style={{ backgroundColor: TERM.bg, borderColor: TERM.border }} aria-label={t("git.tools.title")}>
         <nav className="w-44 shrink-0 border-r p-2" style={{ borderColor: TERM.border, backgroundColor: TERM.card }}>
           <div className="mb-2 px-2 py-1 text-[11px] font-semibold" style={{ color: TERM.fg }}>{t("git.tools.title")}</div>
           {tabs.map((item) => <button key={item.id} type="button" className="ui-focus-ring flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-[11px]" style={{ color: tab === item.id ? TERM.cyan : TERM.fg, backgroundColor: tab === item.id ? panelColorTint(TERM.cyan, 10) : "transparent" }} onClick={() => setTab(item.id)}>{item.icon}<span>{item.label}</span></button>)}
@@ -165,11 +208,11 @@ export function GitPowerToolsDialog({ open, transport, repositoryId, branches, t
 
             {tab === "remotes" && <div className="space-y-3">
               <div className="grid grid-cols-[140px_minmax(240px,1fr)_auto] gap-2"><input className={inputClass} style={{ color: TERM.fg, borderColor: TERM.border }} value={remoteName} onChange={(event) => setRemoteName(event.currentTarget.value)} placeholder={t("git.remote.name")} /><input className={inputClass} style={{ color: TERM.fg, borderColor: TERM.border }} value={remoteUrl} onChange={(event) => setRemoteUrl(event.currentTarget.value)} placeholder={t("git.remote.url")} /><button className={buttonClass} style={{ color: TERM.green, borderColor: panelColorTint(TERM.green, 40) }} disabled={!remoteName.trim() || !remoteUrl.trim()} onClick={() => void mutate(() => transport!.remoteAction(repositoryId!, "add", remoteName.trim(), remoteUrl.trim()))}>{t("common.add")}</button></div>
-              {remotes.map((remote) => <div key={remote.name} className="border-b py-2" style={{ borderColor: panelColorTint(TERM.border, 65) }}><div className="flex items-center gap-2"><strong style={{ color: TERM.cyan }}>{remote.name}</strong><code className="min-w-0 flex-1 truncate" title={remote.fetchUrl}>{remote.fetchUrl}</code>{remoteWebUrl(remote.fetchUrl) && <button className={buttonClass} style={{ borderColor: TERM.border }} onClick={() => void openUrl(remoteWebUrl(remote.fetchUrl)!)}>{t("git.remote.open")}</button>}<button className={buttonClass} style={{ borderColor: TERM.border }} onClick={() => void mutate(() => transport!.remoteAction(repositoryId!, "fetch", remote.name))}>{t("git.branch.fetch")}</button><button className={buttonClass} style={{ borderColor: TERM.border }} onClick={() => { const value=window.prompt(t("git.remote.url"),remote.fetchUrl); if(value)void mutate(()=>transport!.remoteAction(repositoryId!,"set-url",remote.name,value)); }}>{t("git.remote.editUrl")}</button><button className={buttonClass} style={{ borderColor: TERM.border }} onClick={() => { const value=window.prompt(t("git.remote.name"),remote.name); if(value&&value!==remote.name)void mutate(()=>transport!.remoteAction(repositoryId!,"rename",remote.name,value)); }}>{t("git.remote.rename")}</button><button className={buttonClass} style={{ color: TERM.red, borderColor: panelColorTint(TERM.red,40) }} onClick={() => void mutate(() => transport!.remoteAction(repositoryId!, "remove", remote.name), "git.remote.removeConfirm")}>{t("common.delete")}</button></div></div>)}
+              {remotes.map((remote) => <div key={remote.name} className="border-b py-2" style={{ borderColor: panelColorTint(TERM.border, 65) }}><div className="flex items-center gap-2"><strong style={{ color: TERM.cyan }}>{remote.name}</strong><code className="min-w-0 flex-1 truncate" title={remote.fetchUrl}>{remote.fetchUrl}</code>{remoteWebUrl(remote.fetchUrl) && <button className={buttonClass} style={{ borderColor: TERM.border }} onClick={() => void openUrl(remoteWebUrl(remote.fetchUrl)!)}>{t("git.remote.open")}</button>}<button className={buttonClass} style={{ borderColor: TERM.border }} onClick={() => void mutate(() => transport!.remoteAction(repositoryId!, "fetch", remote.name))}>{t("git.branch.fetch")}</button><button className={buttonClass} style={{ borderColor: TERM.border }} onClick={async () => { const value=await prompt({ title: t("git.remote.url"), initialValue: remote.fetchUrl }); if(value)void mutate(()=>transport!.remoteAction(repositoryId!,"set-url",remote.name,value)); }}>{t("git.remote.editUrl")}</button><button className={buttonClass} style={{ borderColor: TERM.border }} onClick={async () => { const value=await prompt({ title: t("git.remote.name"), initialValue: remote.name }); if(value&&value!==remote.name)void mutate(()=>transport!.remoteAction(repositoryId!,"rename",remote.name,value)); }}>{t("git.remote.rename")}</button><button className={buttonClass} style={{ color: TERM.red, borderColor: panelColorTint(TERM.red,40) }} onClick={() => void mutate(() => transport!.remoteAction(repositoryId!, "remove", remote.name), "git.remote.removeConfirm")}>{t("common.delete")}</button></div></div>)}
               <div className="flex flex-wrap items-center gap-2 border-t pt-3" style={{ borderColor: TERM.border }}><select className={inputClass} style={{ color: TERM.fg, borderColor: TERM.border, backgroundColor: TERM.bg }} value={remoteName} onChange={(event)=>setRemoteName(event.currentTarget.value)}>{remoteNames.map((name)=><option key={name}>{name}</option>)}</select><select className={`${inputClass} min-w-48`} style={{ color: TERM.fg, borderColor: TERM.border, backgroundColor: TERM.bg }} value={remoteBranch} onChange={(event)=>setRemoteBranch(event.currentTarget.value)}><option value="">{t("git.remote.selectBranch")}</option>{branches.map((branch)=><option key={branch.name} value={branch.branchType === "remote" ? branch.name.split("/").slice(1).join("/") : branch.name}>{branch.name}</option>)}</select><button className={buttonClass} style={{ color: TERM.red, borderColor: panelColorTint(TERM.red,40) }} disabled={!remoteBranch} onClick={()=>void mutate(()=>transport!.deleteRemoteBranch(repositoryId!,remoteName,remoteBranch),"git.remote.deleteBranchConfirm")}>{t("git.remote.deleteBranch")}</button><button className={buttonClass} style={{ color: TERM.red, borderColor: panelColorTint(TERM.red,40) }} disabled={!branchStatus?.branch} onClick={()=>void mutate(()=>transport!.forcePushWithLease(repositoryId!,remoteName,branchStatus!.branch!),"git.remote.forceLeaseConfirm")}>{t("git.remote.forceLease")}</button></div>
             </div>}
 
-            {tab === "reflog" && <div className="space-y-1">{reflog.length === 0 ? <EmptyHint text={loading?t("common.loading"):t("git.reflog.empty")} /> : reflog.map((entry)=><div key={`${entry.selector}:${entry.oid}`} className="grid grid-cols-[100px_90px_minmax(180px,1fr)_150px_auto] items-center gap-2 border-b py-2" style={{borderColor:panelColorTint(TERM.border,65)}}><code style={{color:TERM.yellow}}>{entry.selector}</code><code>{entry.shortId}</code><span className="truncate" title={entry.message}>{entry.action}: {entry.message}</span><span style={{color:TERM.dim}}>{dateFormatter.format(new Date(entry.authoredAt))}</span><button className={buttonClass} style={{borderColor:TERM.border}} onClick={()=>{const name=window.prompt(t("git.reflog.branchName"),restoreBranch||`recovery-${entry.shortId}`);if(name){setRestoreBranch(name);void mutate(()=>transport!.restoreReflog(repositoryId!,entry.selector,name));}}}>{t("git.reflog.restore")}</button></div>)}</div>}
+            {tab === "reflog" && <div className="space-y-1">{reflog.length === 0 ? <EmptyHint text={loading?t("common.loading"):t("git.reflog.empty")} /> : reflog.map((entry)=><div key={`${entry.selector}:${entry.oid}`} className="grid grid-cols-[100px_90px_minmax(180px,1fr)_150px_auto] items-center gap-2 border-b py-2" style={{borderColor:panelColorTint(TERM.border,65)}}><code style={{color:TERM.yellow}}>{entry.selector}</code><code>{entry.shortId}</code><span className="truncate" title={entry.message}>{entry.action}: {entry.message}</span><span style={{color:TERM.dim}}>{dateFormatter.format(new Date(entry.authoredAt))}</span><button className={buttonClass} style={{borderColor:TERM.border}} onClick={async ()=>{const name=await prompt({ title: t("git.reflog.branchName"), initialValue: restoreBranch||`recovery-${entry.shortId}` });if(name){setRestoreBranch(name);void mutate(()=>transport!.restoreReflog(repositoryId!,entry.selector,name));}}}>{t("git.reflog.restore")}</button></div>)}</div>}
 
             {tab === "file" && <div className="space-y-3"><div className="flex gap-2"><input className={`${inputClass} min-w-64 flex-1`} style={{color:TERM.fg,borderColor:TERM.border}} value={filePath} onChange={(event)=>setFilePath(event.currentTarget.value)} placeholder={t("git.file.pathPlaceholder")} /><button className={buttonClass} style={{borderColor:TERM.border}} onClick={()=>void loadFileData("history")}>{t("git.file.history")}</button><button className={buttonClass} style={{borderColor:TERM.border}} onClick={()=>void loadFileData("blame")}>{t("git.file.blame")}</button></div>{fileMode==="history"?(fileHistory.length===0?<EmptyHint text={t("git.file.empty")} />:<div>{fileHistory.map((entry)=><div key={entry.id} className="grid grid-cols-[90px_minmax(180px,1fr)_130px_150px] gap-2 border-b py-2" style={{borderColor:panelColorTint(TERM.border,65)}}><code>{entry.shortId}</code><span className="truncate">{entry.title}</span><span className="truncate">{entry.author}</span><span style={{color:TERM.dim}}>{dateFormatter.format(new Date(entry.authoredAt))}</span></div>)}</div>):(blame.length===0?<EmptyHint text={t("git.file.empty")} />:<pre className="min-w-max text-[10px] leading-5">{blame.map((line)=><div key={line.lineNumber} className="grid grid-cols-[50px_80px_120px_minmax(300px,1fr)] gap-2"><span style={{color:TERM.dim}}>{line.lineNumber}</span><code>{line.commitId.slice(0,8)}</code><span className="truncate">{line.author}</span><code>{line.content}</code></div>)}</pre>)}</div>}
 
@@ -182,6 +225,7 @@ export function GitPowerToolsDialog({ open, transport, repositoryId, branches, t
           <footer className="flex h-10 shrink-0 items-center border-t px-3 text-[10px]" style={{borderColor:TERM.border,color:TERM.dim}}><span>{t("git.tools.safetyHint")}</span><span className="ml-auto">{tags.length} {t("git.workspace.tags")} · {branches.length} {t("git.workspace.branches")}</span></footer>
         </div>
       </section>
-    </div>
+      </Modal>
+    </>
   );
 }

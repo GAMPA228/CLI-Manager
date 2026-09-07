@@ -1,3 +1,53 @@
+# PR #252 合并兼容与安全修复验证（2026-09-07）
+
+## 根因与发现清单
+
+- PR 分支基于旧 protocol `1.13`，把 Git history 占用了主线已经用于 SFTP download/delete 的 `1.14`；合并后统一为 Agent `0.1.14` / protocol `1.15`，保留 `fileGet`、`fileDelete` 并分别协商 `gitHistory`、`gitWorkspaceTools`。
+- 用量 Schema 的快速返回只检查少量表、视图、列和 marker，会把缺索引或旧视图误判为健康；现在验证全部必需对象和最终视图列，并可补齐索引、覆盖过期 marker。
+- Git rewrite 恢复引用原先只有秒级时间戳，重复操作可能覆盖恢复点；现在加入纳秒时间戳与原始提交前缀，并用 create-only `update-ref` 防止覆盖已有引用。
+- Git 引用收藏控件原先嵌套在按钮内，隐藏操作仅响应 hover，增强工具弹窗缺少 dialog/focus/Escape 契约；相关键盘和语义已补齐。
+
+## 验证结果
+
+- `npx tsc --noEmit`、`npm run build`：通过。
+- `cargo check --manifest-path src-tauri/Cargo.toml`：通过。
+- `cargo test --manifest-path src-tauri/Cargo.toml usage_schema --lib`：6 项通过。
+- `cargo test --manifest-path src-tauri/Cargo.toml ssh_agent_bridge --lib`：28 项通过。
+- `cargo test --manifest-path src-tauri/Cargo.toml git_tools --lib`：3 项通过。
+- `cargo test --manifest-path src-tauri/ssh-agent/Cargo.toml --lib`：97 项通过。
+- 桌面 Rust 全量单元测试：1237 项通过、1 项忽略；扩展后的 Git rewrite 连续恢复点与脏工作区测试另外通过。
+- 使用已安装的 Node 22.23.2 执行 `scripts/git*.test.mjs`：71 项中 70 项通过；唯一失败为既有 `FileEditorPane.tsx <= 300` 静态长度断言，`origin/master` 同文件已有 424 个非空行，不是本 PR 引入。保留断言，纳入结构拆分阶段修复。
+- 默认 Node 20.19.0 不支持部分已有测试直接导入 TypeScript；使用本机 Node 22 复核，不新增依赖。
+
+## 未覆盖与测试边界
+
+- 未连接真实 SSH Host 执行 Git/SFTP 混合协议端到端测试；发送前 capability 检查、协议报告与 Agent 全量单元测试已覆盖。
+- 未在 Tauri 窗口手动切换中英文、键盘遍历弹窗及操作真实仓库；生产构建已验证前端类型和打包入口。
+- 增强工具复用项目的 Modal、确认和输入弹窗；补充读取 generation、写操作互斥与仓库上下文过期检查。仍需人工验证仓库切换期间的确认取消、Tab/Shift+Tab、Escape 和焦点恢复。
+
+---
+
+# 桌面宠物渲染边界验证（2026-09-06）
+
+## 根因与发现清单
+
+- 根因位于桌宠原生窗口固定尺寸与 WebView 实际渲染边界之间：状态气泡可能通过 CSS 变换或内容布局超出 `190 × 210` 的可视区域，窗口自身的 `overflow: hidden` 随后裁剪气泡。
+- 修复落在 `DesktopPetApp` 的渲染测量与 Tauri 窗口 bounds 调整边界；新增纯函数 `calculateDesktopPetRenderedBounds` 负责 CSS 像素到物理像素、底部中心锚点、DPI 和工作区限制，菜单窗口仍复用既有几何计算。
+- `ResizeObserver` 在 DOM 更新后等待两帧再测量状态气泡和宠物舞台；原生调整期间不把程序化移动误记为用户拖动，窗口尺寸变化不会污染持久化位置。
+
+## 验证结果
+
+- `node --test scripts/desktopPetRenderedBounds.test.mjs`：6 项通过，覆盖顶部裁剪、水平超出、扩展稳定、缩回、DPI 缩放和工作区边界。
+- `npx tsc --noEmit`：通过。
+- `git diff --check`：通过（仅保留仓库既有 LF/CRLF 转换提示）。
+
+## 未覆盖与测试边界
+
+- 尚未在 Windows Tauri 实机上对多显示器、125%/150% DPI、屏幕顶部停靠和菜单开关组合做端到端手测；生产构建与 NSIS 打包需在本次交付中继续验证。
+- Rust 窗口 bounds 命令契约未改变；需要在打包后确认透明无边框窗口的 outer size 与 WebView CSS viewport 在目标 Windows 版本上保持一致。
+
+---
+
 # JetBrains 风格 Git 工作区验证（2026-09-04）
 
 ## Git 工作区底部工具窗口与目录树（2026-09-04）

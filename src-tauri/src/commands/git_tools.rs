@@ -779,9 +779,11 @@ fn rewrite_commits(
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| "git_rewrite_clock_invalid")?
-        .as_secs();
-    let backup_ref = format!("refs/cli-manager/rebase-backup/{timestamp}");
-    run_git_cli(project_path, &["update-ref", &backup_ref, &original_head])?;
+        .as_nanos();
+    let original_prefix = original_head.get(..12).unwrap_or(&original_head);
+    let backup_ref = format!("refs/cli-manager/rebase-backup/{timestamp}-{original_prefix}");
+    // Empty old-value makes this create-only: a collision must never replace a recovery point.
+    run_git_cli(project_path, &["update-ref", &backup_ref, &original_head, ""])?;
     run_git_cli(project_path, &["reset", "--hard", upstream])?;
     for step in steps {
         let result = match step.action.as_str() {
@@ -939,5 +941,26 @@ mod tests {
         assert!(backup.starts_with("refs/cli-manager/rebase-backup/"));
         assert_eq!(git(path, &["log", "-1", "--format=%s"]), "second rewritten");
         assert!(!git(path, &["rev-parse", "--verify", &backup]).is_empty());
+        let first_backup_head = git(path, &["rev-parse", &backup]);
+        let rewritten_head = git(path, &["rev-parse", "HEAD"]);
+        let sequence = git(path, &["rev-list", "--reverse", &format!("{base}..HEAD")]);
+        let steps = sequence.lines().map(|id| GitRewriteStep {
+            action: "pick".into(),
+            commit_id: id.into(),
+            message: String::new(),
+        }).collect::<Vec<_>>();
+        let second_backup = rewrite_commits(path.to_str().unwrap(), &base, &steps).unwrap();
+        assert_ne!(backup, second_backup);
+        assert_eq!(git(path, &["rev-parse", &backup]), first_backup_head);
+        assert_eq!(git(path, &["rev-parse", &second_backup]), rewritten_head);
+
+        std::fs::write(path.join("file.txt"), "uncommitted user work\n").unwrap();
+        let head_before = git(path, &["rev-parse", "HEAD"]);
+        assert_eq!(
+            rewrite_commits(path.to_str().unwrap(), &base, &steps).unwrap_err(),
+            "git_rewrite_worktree_dirty"
+        );
+        assert_eq!(git(path, &["rev-parse", "HEAD"]), head_before);
+        assert_eq!(std::fs::read_to_string(path.join("file.txt")).unwrap(), "uncommitted user work\n");
     }
 }

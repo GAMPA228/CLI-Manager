@@ -11,7 +11,9 @@ const details = read("../src/components/git/workspace/GitCommitDetails.tsx");
 test("the sidebar entry and terminal shell share one workspace store", () => {
   assert.match(footer, /useGitWorkspaceStore/);
   assert.match(terminalTabs, /useGitWorkspaceStore/);
-  assert.match(terminalTabs, /display: fullWorkspaceActive \? "none" : "flex"/);
+  assert.match(terminalTabs, /data-terminal-side-panel-visible=/);
+  assert.match(terminalTabs, /display: historyActive \? "none" : "flex"/);
+  assert.match(terminalTabs, /style=\{\{ height: gitWorkspaceHeight/);
   assert.match(terminalTabs, /<GitWorkspace/);
 });
 

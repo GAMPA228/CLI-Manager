@@ -17,6 +17,7 @@ import {
 import { useExternalSessionSyncStore } from "../../stores/externalSessionSyncStore";
 import type { TerminalPaneSplitDirection } from "../../stores/terminalPaneTree";
 import type { HistorySourceFilter, Project, TreeNode as TNode, Group, TerminalScope, TerminalSession, WorktreeRecord } from "../../lib/types";
+import type { WorkspaceDockSide } from "../../lib/workspaceLayout";
 import { ConfigModal } from "../ConfigModal";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { useAppConfirm } from "../ui/useAppConfirm";
@@ -76,12 +77,17 @@ import type { SettingsTab } from "../SettingsModal";
 import { useI18n } from "../../lib/i18n";
 import { getOsPlatform } from "../../lib/shell";
 import { resolveProjectPath } from "../../lib/groupPath";
-import { SIDEBAR_TOGGLE_REQUEST_EVENT } from "../../lib/sidebarCommands";
+import {
+  SIDEBAR_EXPAND_REQUEST_EVENT,
+  SIDEBAR_TOGGLE_REQUEST_EVENT,
+  notifySidebarStateChange,
+} from "../../lib/sidebarCommands";
 
 interface SidebarProps {
   onOpenSettings: (tab?: SettingsTab) => void;
   onOpenStats: () => void;
   compactMode?: boolean;
+  dockSide?: WorkspaceDockSide;
   projectScopedTerminalViewEnabled?: boolean;
   terminalScope?: TerminalScope;
   onTerminalScopeChange?: (scope: TerminalScope) => void;
@@ -210,6 +216,7 @@ export function Sidebar({
   onOpenSettings,
   onOpenStats,
   compactMode = false,
+  dockSide = "left",
   projectScopedTerminalViewEnabled = true,
   terminalScope = ALL_TERMINALS_SCOPE,
   onTerminalScopeChange,
@@ -689,6 +696,22 @@ export function Sidebar({
   }, [sidebarCollapsed, expandSidebar]);
 
   useEffect(() => {
+    notifySidebarStateChange({
+      collapsed: compactMode ? false : sidebarCollapsed,
+      compactMode,
+    });
+  }, [compactMode, sidebarCollapsed]);
+
+  useEffect(() => {
+    if (compactMode) return;
+    const handleExpandRequest = () => {
+      if (sidebarCollapsedRef.current) expandSidebar();
+    };
+    window.addEventListener(SIDEBAR_EXPAND_REQUEST_EVENT, handleExpandRequest);
+    return () => window.removeEventListener(SIDEBAR_EXPAND_REQUEST_EVENT, handleExpandRequest);
+  }, [compactMode, expandSidebar]);
+
+  useEffect(() => {
     if (compactMode) return;
     const handleToggleRequest = () => toggleSidebarCollapsed();
     window.addEventListener(SIDEBAR_TOGGLE_REQUEST_EVENT, handleToggleRequest);
@@ -728,9 +751,12 @@ export function Sidebar({
       setSidebarResizing(true);
 
       let latestX = e.clientX;
+      const getWidthFromPointer = (clientX: number) => (
+        dockSide === "right" ? window.innerWidth - clientX : clientX
+      );
       const flush = () => {
         resizeFrameRef.current = null;
-        previewSidebarWidth(latestX);
+        previewSidebarWidth(getWidthFromPointer(latestX));
       };
 
       const onMove = (ev: MouseEvent) => {
@@ -745,7 +771,7 @@ export function Sidebar({
           cancelAnimationFrame(resizeFrameRef.current);
           resizeFrameRef.current = null;
         }
-        const { nextWidth, shouldCollapse } = previewSidebarWidth(latestX);
+        const { nextWidth, shouldCollapse } = previewSidebarWidth(getWidthFromPointer(latestX));
         setSidebarCollapsed(shouldCollapse);
         setSidebarWidth(nextWidth);
         isResizingRef.current = false;
@@ -762,7 +788,7 @@ export function Sidebar({
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
     },
-    [persistSidebarWidth, previewSidebarWidth]
+    [dockSide, persistSidebarWidth, previewSidebarWidth]
   );
 
   const handleDragEnd = useCallback(
@@ -2143,6 +2169,7 @@ export function Sidebar({
         compactMode ? "min-w-0 flex-1" : "shrink-0"
       } ${sidebarResizing ? "transition-none" : "transition-[width] duration-150"}`}
       data-sidebar-density={sidebarDensity}
+      data-sidebar-side={dockSide}
       style={{ width: compactMode ? "100%" : sidebarWidth }}
     >
       {appConfirmDialog}
@@ -2155,6 +2182,7 @@ export function Sidebar({
           totalProjectCount={projects.length}
           openProjectCount={openProjectIds.size}
           onToggleCollapse={toggleSidebarCollapsed}
+          dockSide={dockSide}
           onProjectFilterChange={setProjectFilter}
           onCreateGroup={() => {
             ensureSidebarExpanded();
@@ -3015,7 +3043,9 @@ export function Sidebar({
       {!compactMode && (
         <div
           onMouseDown={startResize}
-          className="ui-sidebar-resize-handle absolute bottom-0 right-0 top-0 z-10 w-1.5 cursor-col-resize transition-colors"
+          className={`ui-sidebar-resize-handle absolute bottom-0 top-0 z-10 w-1.5 cursor-col-resize transition-colors ${
+            dockSide === "right" ? "left-0" : "right-0"
+          }`}
           style={{ opacity: 0.8 }}
         />
       )}

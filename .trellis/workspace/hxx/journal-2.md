@@ -1332,3 +1332,203 @@ Added a global local smart-title prompt, persisted save feedback, non-blocking P
 ### Status
 
 [OK] **Completed**
+
+
+## Session 103: SSH Agent SFTP 发布与远程目录选择器
+
+**Date**: 2026-09-01
+**Task**: SSH Agent SFTP 发布与远程目录选择器
+**Branch**: `master`
+
+### Summary
+
+完成 SSH 文件浏览器 SFTP 入口与 Host 面板复用；增加远程目录选择器，支持手动输入、子目录导航、返回上级、刷新和选择当前目录。Agent 升级到 0.1.13 / protocol 1.14，新增 fileGet/fileDelete，完成前端构建、Rust 检查和 Agent 测试，并推送 ssh-agent-v0.1.13 触发 GitHub 预发布。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4601e769` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 104: Fix Codex CLI output recovery
+
+**Date**: 2026-09-03
+**Task**: Fix Codex CLI output recovery
+**Branch**: `master`
+
+### Summary
+
+Fixed Issue #245: hardened terminal output scheduling and daemon ACK recovery; separated checkpoint snapshots from live frames, detected spool truncation gaps and reused reconnect replay_reset recovery, moved spool reads outside the global clients lock, and added regression tests plus V1.3.9 documentation.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c51a0bcf` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 105: Hook 系统通知自定义声音
+
+**Date**: 2026-09-03
+**Task**: Hook 系统通知自定义声音
+**Branch**: `master`
+
+### Summary
+
+实现 Windows 本地 Hook 自定义 WAV 通知声音，支持选择、试听、清除、失效回退与本机路径隔离；设置页在选择按钮左侧提示仅支持 .wav 格式，关联 issue #239。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dace561f` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 106: 解除 AI 进展时间轴展开收起限制
+
+**Date**: 2026-09-04
+**Task**: 解除 AI 进展时间轴展开收起限制
+**Branch**: `master`
+
+### Summary
+
+修复 AI Replay 进展时间轴的展开状态：支持多个轮次同时展开、全部收起，并仅清理已移除轮次的失效状态。已通过 TypeScript、Vite 构建和 6 项回放模型测试。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `eb1f2ee5` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 107: history-content-sort-codex-title
+
+**Date**: 2026-09-04
+**Task**: history-content-sort-codex-title
+**Branch**: `master`
+
+### Summary
+
+v1.3.9-history-detail-ordering-persistence-codex-thread-name-and-descending-transcript-overlap-fix
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dc3e2ddc` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 108: 修复历史会话 Markdown 表格渲染
+
+**Date**: 2026-09-04
+**Task**: 修复历史会话 Markdown 表格渲染
+**Branch**: `master`
+
+### Summary
+
+历史会话完整 Markdown 源码围栏现在会在 history 渲染层严格解包，GFM 表格直接渲染；普通 Markdown 代码块容器改用应用主题变量，终端预览保持独立主题。
+
+### Main Changes
+
+- 抽取共享的 unwrapFencedMarkdown 工具，并由历史与终端预览复用。
+- 补充围栏边界、历史入口和主题覆盖回归测试，更新 V1.3.9 变更记录与功能清单。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `25defb59` | (see git log) |
+
+### Testing
+
+- [OK] npx tsc --noEmit
+- [OK] node --test scripts/historyMarkdownRendering.test.mjs scripts/markdownRendering.test.mjs scripts/terminalMarkdownPreview.test.mjs scripts/historyConversationView.test.mjs
+- [OK] npm run build
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 109: 完成 Issue #248 VS Code 式工作区布局控制
+
+**Date**: 2026-09-07
+**Task**: 完成 Issue #248 VS Code 式工作区布局控制
+**Branch**: `master`
+
+### Summary
+
+完成 V1.3.9 工作区布局控制：标题栏快速操作、项目侧栏与终端辅助面板左右停靠、Workspan Tab 上下位置、可见性持久化、无效 Workspan 操作保护及相关测试与文档。通过 26 项布局测试、TypeScript 检查和生产构建。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1a780b2e` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 110: 修复 Markdown 文件链接与锚点导航
+
+**Date**: 2026-09-07
+**Task**: 修复 Markdown 文件链接与锚点导航
+**Branch**: `master`
+
+### Summary
+
+文件浏览器 Markdown 源码和预览现支持项目范围内文件链接、内部锚点及外部系统链接导航；补齐 Ctrl+右键、中文/Emoji 标题、跨文件与迟到请求保护，并完成 V1.3.9 文档和回归测试。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3680fa64` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 111: 修复文件浏览器右键菜单裁剪
+
+**Date**: 2026-09-07
+**Task**: 修复文件浏览器右键菜单裁剪
+**Branch**: `master`
+
+### Summary
+
+修复文件浏览器右键菜单在窗口边缘被裁剪的问题，恢复 Radix Popper 完整尺寸测量与视口避让，并在菜单打开期间高亮右键目标行；补充回归测试、V1.3.9 记录和前端浮层契约。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c1163a2d` | (see git log) |
+
+### Status
+
+[OK] **Completed**

@@ -71,6 +71,7 @@ import { logError } from "../lib/logger";
 import { translateCurrent } from "../lib/i18n";
 import { defaultShellForOs } from "../lib/shell";
 import { sshRemoteAttachFilesForSession } from "../lib/sshRemoteFiles";
+import { resolveCliToolImagePasteMode, type ImagePasteMode } from "../lib/cliTools";
 import type { OsPlatform } from "../lib/shell";
 import { formatShellPathList, normalizeShellForKnownOs } from "../lib/terminalShellPath";
 import type { CommandHistoryEntry, CommandTemplate, TerminalSession } from "../lib/types";
@@ -102,6 +103,15 @@ const remoteAttachmentErrorDescription = (error: unknown) => {
   }
   if (code.includes("attachment_local_file_unavailable")) {
     return translateCurrent("terminal.attachment.localFileUnavailable");
+  }
+  if (code.includes("clipboard_image_unsupported")) {
+    return translateCurrent("terminal.attachment.imageUnsupported");
+  }
+  if (code.includes("clipboard_image_tool_unsupported")) {
+    return translateCurrent("terminal.attachment.imageToolUnsupported");
+  }
+  if (code.includes("clipboard_image_too_large") || code.includes("image_dimensions_too_large")) {
+    return translateCurrent("terminal.attachment.imageTooLarge");
   }
   if (code.includes("ssh_attachment_root_") || code.includes("attachment_root_invalid")) {
     return translateCurrent("terminal.attachment.sshAttachmentRootInvalid");
@@ -211,6 +221,7 @@ export interface UseTerminalInputResult {
   attachPasteAndDrop: (terminal: Terminal) => () => void;
   pasteText: (terminal: Terminal, text: string) => void;
   readClipboardPasteText: () => Promise<string>;
+  readClipboardImagePasteText: () => Promise<string>;
   attachSelection: (
     terminal: Terminal,
     options: TerminalInputSelectionOptions,
@@ -1209,6 +1220,26 @@ export function useTerminalInput({
     isSshPasteContext(context) ? "bash" : await getShellForPathQuoting(),
   );
 
+  const getImagePasteMode = (context: ReturnType<typeof getCurrentPasteContext>): ImagePasteMode => {
+    const tool = context.session?.cliTool || context.project?.cli_tool;
+    return resolveCliToolImagePasteMode(tool);
+  };
+
+  const formatImagePastedPaths = async (
+    paths: string[],
+    context: ReturnType<typeof getCurrentPasteContext>,
+  ): Promise<string> => {
+    const mode = getImagePasteMode(context);
+    if (mode === "unsupported") throw new Error("clipboard_image_tool_unsupported");
+    const quoted = await formatPastedPaths(paths, context);
+    if (mode === "at") {
+      const shell = await getShellForPathQuoting();
+      return paths.map((path) => `@${formatShellPathList([path], shell)}`).join(" ");
+    }
+    if (mode === "aider") return `/add ${quoted}`;
+    return quoted;
+  };
+
   const savePastedImageForTerminal = async (
     file: File,
     context: ReturnType<typeof getCurrentPasteContext>,
@@ -1273,8 +1304,11 @@ export function useTerminalInput({
         event.stopPropagation();
         void savePastedImageForTerminal(imageFile, context).then(async (path) => {
           if (!path) return;
-          pasteIntoTerminal(await formatPastedPaths([path], context));
+          pasteIntoTerminal(await formatImagePastedPaths([path], context));
           terminal.focus();
+        }).catch((err) => {
+          logError("Failed to format pasted terminal image", { sessionId, err });
+          showAttachmentPasteError(err);
         });
         return;
       }
@@ -1461,6 +1495,34 @@ export function useTerminalInput({
     }
   };
 
+  const readClipboardImagePasteText = async (): Promise<string> => {
+    const context = getCurrentPasteContext();
+    try {
+      const imageAttachments = await invoke<{
+        paths: string[];
+        hadFiles: boolean;
+        rejectedCount: number;
+        rejectionCode?: string | null;
+      }>("clipboard_attach_image_files");
+      if (imageAttachments.paths.length > 0) {
+        const attachedPaths = await uploadPastedLocalPaths(imageAttachments.paths, context);
+        return await formatImagePastedPaths(attachedPaths, context);
+      }
+      if (imageAttachments.hadFiles) {
+        throw new Error(imageAttachments.rejectionCode || "clipboard_image_unsupported");
+      }
+
+      const imageFile = await readClipboardImageFile();
+      if (!imageFile) throw new Error("clipboard_image_unsupported");
+      const path = await savePastedImageForTerminal(imageFile, context);
+      return path ? await formatImagePastedPaths([path], context) : "";
+    } catch (err) {
+      logError("Failed to paste clipboard image", { sessionId, err });
+      showAttachmentPasteError(err);
+      return "";
+    }
+  };
+
   return {
     isComposingRef,
     attachInputForwarding,
@@ -1477,6 +1539,7 @@ export function useTerminalInput({
     attachPasteAndDrop,
     pasteText,
     readClipboardPasteText,
+    readClipboardImagePasteText,
     attachSelection,
   };
 }

@@ -715,9 +715,11 @@ fn rewrite(request: RewriteRequest) -> Result<Value, String> {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| "git_rewrite_clock_invalid")?
-        .as_secs();
-    let backup = format!("refs/cli-manager/rebase-backup/{timestamp}");
-    output(&repo, &["update-ref", &backup, &original], false)?;
+        .as_nanos();
+    let original_prefix = original.get(..12).unwrap_or(&original);
+    let backup = format!("refs/cli-manager/rebase-backup/{timestamp}-{original_prefix}");
+    // Empty old-value makes this create-only, including on low-resolution clocks.
+    output(&repo, &["update-ref", &backup, &original, ""], false)?;
     output(&repo, &["reset", "--hard", &request.upstream], false)?;
     for step in &request.steps {
         let result = match step.action.as_str() {

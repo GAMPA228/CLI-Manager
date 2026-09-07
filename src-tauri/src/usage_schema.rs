@@ -63,15 +63,47 @@ async fn usage_error_detail_marker_matches(
     )
 }
 
+async fn usage_view_has_required_columns(
+    connection: &mut SqliteConnection,
+) -> Result<bool, String> {
+    let column_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)
+         FROM pragma_table_info('unified_usage_records')
+         WHERE name IN ('project_path', 'error_detail')",
+    )
+    .fetch_one(&mut *connection)
+    .await
+    .map_err(|err| format!("usage_schema_view_columns_inspect_failed:{err}"))?;
+    Ok(column_count == 2)
+}
+
 async fn usage_schema_is_ready(connection: &mut SqliteConnection) -> Result<bool, String> {
-    if !sqlite_object_exists(connection, "table", "request_logs").await?
-        || !sqlite_object_exists(connection, "table", "usage_records").await?
-        || !sqlite_object_exists(connection, "view", "unified_usage_records").await?
-        || !usage_error_detail_column_exists(connection).await?
-    {
-        return Ok(false);
+    const REQUIRED_OBJECTS: &[(&str, &str)] = &[
+        ("table", "request_logs"),
+        ("table", "request_log_sync"),
+        ("table", "usage_records"),
+        ("table", "usage_daily_rollups"),
+        ("view", "unified_usage_records"),
+        ("index", "idx_request_logs_time"),
+        ("index", "idx_request_logs_source_project"),
+        ("index", "idx_request_logs_session"),
+        ("index", "idx_request_logs_model"),
+        ("index", "idx_usage_records_time"),
+        ("index", "idx_usage_records_project"),
+        ("index", "idx_usage_records_session"),
+        ("index", "idx_usage_records_provider"),
+        ("index", "idx_usage_records_source"),
+        ("index", "idx_usage_records_route_dedup"),
+        ("index", "idx_usage_records_project_path"),
+    ];
+    for (object_type, name) in REQUIRED_OBJECTS {
+        if !sqlite_object_exists(connection, object_type, name).await? {
+            return Ok(false);
+        }
     }
-    usage_error_detail_marker_matches(connection).await
+    Ok(usage_error_detail_column_exists(connection).await?
+        && usage_view_has_required_columns(connection).await?
+        && usage_error_detail_marker_matches(connection).await?)
 }
 
 async fn apply_usage_schema_sql(
@@ -124,7 +156,11 @@ async fn mark_usage_error_detail_migration(
         "INSERT INTO _sqlx_migrations(
             version, description, success, checksum, execution_time
          ) VALUES (?1, ?2, TRUE, ?3, 0)
-         ON CONFLICT(version) DO NOTHING",
+         ON CONFLICT(version) DO UPDATE SET
+            description = excluded.description,
+            success = excluded.success,
+            checksum = excluded.checksum,
+            execution_time = excluded.execution_time",
     )
     .bind(crate::MIGRATION_ADD_USAGE_ERROR_DETAIL_VERSION)
     .bind(crate::MIGRATION_ADD_USAGE_ERROR_DETAIL_DESCRIPTION)
@@ -137,6 +173,7 @@ async fn mark_usage_error_detail_migration(
 
 async fn ensure_usage_error_detail_schema(connection: &mut SqliteConnection) -> Result<(), String> {
     if usage_error_detail_column_exists(connection).await?
+        && usage_view_has_required_columns(connection).await?
         && usage_error_detail_marker_matches(connection).await?
     {
         return Ok(());
@@ -147,6 +184,7 @@ async fn ensure_usage_error_detail_schema(connection: &mut SqliteConnection) -> 
         .map_err(|err| format!("usage_schema_error_detail_begin_failed:{err}"))?;
     let result = async {
         if usage_error_detail_column_exists(connection).await?
+            && usage_view_has_required_columns(connection).await?
             && usage_error_detail_marker_matches(connection).await?
         {
             return Ok(());
@@ -178,22 +216,18 @@ pub(crate) async fn ensure_usage_schema(connection: &mut SqliteConnection) -> Re
     if usage_schema_is_ready(connection).await? {
         return Ok(());
     }
-    if !sqlite_object_exists(connection, "table", "request_logs").await? {
-        apply_usage_schema_sql(
-            connection,
-            "request_logs",
-            crate::MIGRATION_CREATE_REQUEST_LOGS_SQL,
-        )
-        .await?;
-    }
-    if !sqlite_object_exists(connection, "table", "usage_records").await? {
-        apply_usage_schema_sql(
-            connection,
-            "usage_records",
-            crate::MIGRATION_CREATE_USAGE_RECORDS_SQL,
-        )
-        .await?;
-    }
+    apply_usage_schema_sql(
+        connection,
+        "request_logs",
+        crate::MIGRATION_CREATE_REQUEST_LOGS_SQL,
+    )
+    .await?;
+    apply_usage_schema_sql(
+        connection,
+        "usage_records",
+        crate::MIGRATION_CREATE_USAGE_RECORDS_SQL,
+    )
+    .await?;
     for (name, sql) in [
         (
             "unified_usage_records",
@@ -371,5 +405,70 @@ mod tests {
         let options = SqliteConnectOptions::new().filename(&path).read_only(true);
         let mut connection = SqliteConnection::connect_with(&options).await.unwrap();
         ensure_usage_schema(&mut connection).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn bootstrap_restores_missing_required_indexes() {
+        let mut connection = SqliteConnection::connect(":memory:").await.unwrap();
+        ensure_usage_schema(&mut connection).await.unwrap();
+        sqlx::query("DROP INDEX idx_usage_records_route_dedup")
+            .execute(&mut connection)
+            .await
+            .unwrap();
+        sqlx::query("DROP INDEX idx_request_logs_model")
+            .execute(&mut connection)
+            .await
+            .unwrap();
+
+        ensure_usage_schema(&mut connection).await.unwrap();
+
+        for name in ["idx_usage_records_route_dedup", "idx_request_logs_model"] {
+            let count: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?1",
+            )
+            .bind(name)
+            .fetch_one(&mut connection)
+            .await
+            .unwrap();
+            assert_eq!(count, 1, "missing repaired index {name}");
+        }
+        sqlx::query("SELECT project_path, error_code, error_detail FROM unified_usage_records LIMIT 0")
+            .fetch_all(&mut connection)
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA query_only = ON").execute(&mut connection).await.unwrap();
+        ensure_usage_schema(&mut connection).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn bootstrap_repairs_stale_usage_error_detail_marker() {
+        let mut connection = SqliteConnection::connect(":memory:").await.unwrap();
+        ensure_usage_schema(&mut connection).await.unwrap();
+        sqlx::query(
+            "UPDATE _sqlx_migrations
+             SET description = 'stale', checksum = x'00'
+             WHERE version = ?1",
+        )
+        .bind(crate::MIGRATION_ADD_USAGE_ERROR_DETAIL_VERSION)
+        .execute(&mut connection)
+        .await
+        .unwrap();
+
+        ensure_usage_schema(&mut connection).await.unwrap();
+
+        let marker =
+            sqlx::query("SELECT description, checksum FROM _sqlx_migrations WHERE version = ?1")
+                .bind(crate::MIGRATION_ADD_USAGE_ERROR_DETAIL_VERSION)
+                .fetch_one(&mut connection)
+                .await
+                .unwrap();
+        assert_eq!(
+            marker.get::<String, _>("description"),
+            crate::MIGRATION_ADD_USAGE_ERROR_DETAIL_DESCRIPTION
+        );
+        assert_eq!(
+            marker.get::<Vec<u8>, _>("checksum"),
+            Sha384::digest(crate::MIGRATION_ADD_USAGE_ERROR_DETAIL_SQL.as_bytes()).to_vec()
+        );
     }
 }

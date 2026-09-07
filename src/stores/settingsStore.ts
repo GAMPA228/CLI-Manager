@@ -41,6 +41,16 @@ import {
   type TerminalPaneMarkerSettings,
 } from "../lib/terminalPaneMarker";
 import type { HistorySmartTitleSettings } from "../lib/types";
+import {
+  DEFAULT_HISTORY_DETAIL_SORT_DIRECTIONS,
+  HISTORY_SORTABLE_DETAIL_VIEWS,
+  type HistoryDetailSortDirections,
+} from "../lib/historySort";
+import {
+  migrateWorkspaceLayout,
+  WORKSPACE_LAYOUT_DEFAULTS,
+  type WorkspaceLayoutSettings,
+} from "../lib/workspaceLayout";
 
 export const HISTORY_SMART_TITLE_CUSTOM_PROMPT_MAX_BYTES = 4096;
 
@@ -335,6 +345,8 @@ export type TerminalBackgroundPosition =
 
 export interface TerminalBackgroundSettings {
   enabled: boolean;
+  /** Whether the background image should cover the whole main workspace. */
+  fillWorkspace: boolean;
   imagePath: string | null;
   imageSizeBytes: number | null;
   opacity: number;
@@ -384,6 +396,7 @@ export interface Settings {
   sidebarWidth: number;
   historySidebarWidth: number;
   historySmartTitle: HistorySmartTitleSettings;
+  historyDetailSortDirections: HistoryDetailSortDirections;
   collapsedGroupIds: string[];
   useExternalTerminal: boolean;
   debugMode: boolean;
@@ -412,6 +425,7 @@ export interface Settings {
   terminalSidePanelSingleOpen: boolean;
   terminalSidePanelSkin: TerminalSidePanelSkin;
   terminalPanelWidths: TerminalPanelWidthSettings;
+  workspaceLayout: WorkspaceLayoutSettings;
   terminalStatsCardVisibility: TerminalStatsCardVisibilitySettings;
   terminalStatsCardOrder: TerminalStatsCardOrderSettings;
   systemResourceCardVisibility: SystemResourceCardVisibilitySettings;
@@ -456,6 +470,7 @@ export interface Settings {
   piHookBridgeEnabled: boolean;
   grokHookBridgeEnabled: boolean;
   systemNotificationsEnabled: boolean;
+  systemNotificationSoundPath: string | null;
   suppressSystemNotificationsWhenFocused: boolean;
   systemNotificationEvents: Record<HookEventType, boolean>;
   taskbarAttentionEnabled: boolean;
@@ -510,6 +525,7 @@ interface SettingsStore extends Settings {
   terminalBackgroundMissing: boolean;
   load: () => Promise<void>;
   update: <K extends keyof Settings>(key: K, value: Settings[K]) => Promise<void>;
+  updateHistoryDetailSortDirections: (value: HistoryDetailSortDirections) => void;
   recordTerminalInputSuggestionUsage: (event: TerminalInputSuggestionAiAttempt | { accepted: true }) => void;
   recordCliArgsHistory: (cliTool: string, cliArgs: string) => Promise<void>;
   setTheme: (mode: ThemeMode) => Promise<void>;
@@ -547,6 +563,7 @@ const DEFAULTS: Settings = {
     enabledAt: null,
     customPrompt: "",
   },
+  historyDetailSortDirections: { ...DEFAULT_HISTORY_DETAIL_SORT_DIRECTIONS },
   collapsedGroupIds: [],
   useExternalTerminal: false,
   debugMode: false,
@@ -586,6 +603,7 @@ const DEFAULTS: Settings = {
   terminalSidePanelSingleOpen: true,
   terminalSidePanelSkin: "terminal",
   terminalPanelWidths: { ...TERMINAL_PANEL_WIDTH_DEFAULTS },
+  workspaceLayout: { ...WORKSPACE_LAYOUT_DEFAULTS },
   terminalStatsCardVisibility: {
     session: true,
     tokenUsage: true,
@@ -622,6 +640,7 @@ const DEFAULTS: Settings = {
   linuxGraphicsMode: "auto",
   terminalBackground: {
     enabled: false,
+    fillWorkspace: false,
     imagePath: null,
     imageSizeBytes: null,
     opacity: 50,
@@ -654,6 +673,7 @@ const DEFAULTS: Settings = {
   piHookBridgeEnabled: true,
   grokHookBridgeEnabled: true,
   systemNotificationsEnabled: true,
+  systemNotificationSoundPath: null,
   suppressSystemNotificationsWhenFocused: true,
   systemNotificationEvents: {
     SessionStart: false,
@@ -796,6 +816,10 @@ function migrateSystemNotificationEvents(value: unknown): Record<HookEventType, 
   return result;
 }
 
+function migrateSystemNotificationSoundPath(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
 function migrateTaskbarAttentionMode(value: unknown): TaskbarAttentionMode {
   return value === "finite" || value === "untilFocused"
     ? value
@@ -858,6 +882,20 @@ export function migrateHistorySmartTitleSettings(value: unknown): HistorySmartTi
     enabledAt,
     customPrompt: migrateHistorySmartTitleCustomPrompt(raw.customPrompt),
   };
+}
+
+export function migrateHistoryDetailSortDirections(value: unknown): HistoryDetailSortDirections {
+  const raw = typeof value === "object" && value !== null
+    ? value as Record<string, unknown>
+    : {};
+  const next = { ...DEFAULT_HISTORY_DETAIL_SORT_DIRECTIONS };
+  for (const view of HISTORY_SORTABLE_DETAIL_VIEWS) {
+    const direction = raw[view];
+    if (direction === "ascending" || direction === "descending") {
+      next[view] = direction;
+    }
+  }
+  return next;
 }
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
@@ -1147,6 +1185,7 @@ export function migrateTerminalBackground(value: unknown): TerminalBackgroundSet
   const raw = value as Record<string, unknown>;
 
   const enabled = typeof raw.enabled === "boolean" ? raw.enabled : defaults.enabled;
+  const fillWorkspace = typeof raw.fillWorkspace === "boolean" ? raw.fillWorkspace : defaults.fillWorkspace;
   const imagePath =
     typeof raw.imagePath === "string" && raw.imagePath.length > 0
       ? raw.imagePath
@@ -1172,7 +1211,7 @@ export function migrateTerminalBackground(value: unknown): TerminalBackgroundSet
       ? (raw.position as TerminalBackgroundPosition)
       : defaults.position;
 
-  return { enabled, imagePath, imageSizeBytes, opacity, fit, position, blur, overlayDarken };
+  return { enabled, fillWorkspace, imagePath, imageSizeBytes, opacity, fit, position, blur, overlayDarken };
 }
 
 export function migrateDesktopPetSettings(value: unknown): DesktopPetSettings {
@@ -1238,6 +1277,7 @@ export function migrateDesktopPetSettings(value: unknown): DesktopPetSettings {
 let store: Store | null = null;
 const TERMINAL_INPUT_SUGGESTION_USAGE_SAVE_DELAY_MS = 800;
 let terminalInputSuggestionUsageSaveTimer: number | null = null;
+let historyDetailSortWriteQueue: Promise<void> = Promise.resolve();
 
 async function getStore() {
   if (!store) {
@@ -1381,6 +1421,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     entries.sidebarWidth = clampNumber(entries.sidebarWidth, 64, 500, DEFAULTS.sidebarWidth);
     entries.historySidebarWidth = clampNumber(entries.historySidebarWidth, 180, 520, DEFAULTS.historySidebarWidth);
     entries.historySmartTitle = migrateHistorySmartTitleSettings(entries.historySmartTitle);
+    const storedHistoryDetailSortDirections = entries.historyDetailSortDirections;
+    const historyDetailSortDirections = migrateHistoryDetailSortDirections(storedHistoryDetailSortDirections);
+    entries.historyDetailSortDirections = historyDetailSortDirections;
+    if (
+      storedHistoryDetailSortDirections !== undefined
+      && JSON.stringify(storedHistoryDetailSortDirections) !== JSON.stringify(historyDetailSortDirections)
+    ) {
+      persistSetting("historyDetailSortDirections", historyDetailSortDirections);
+    }
     entries.uiFontSize = clampNumber(
       entries.uiFontSize,
       UI_FONT_SIZE_MIN,
@@ -1424,6 +1473,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         : DEFAULTS.terminalSidePanelSingleOpen;
     entries.terminalSidePanelSkin = migrateTerminalSidePanelSkin(entries.terminalSidePanelSkin);
     entries.terminalPanelWidths = migrateTerminalPanelWidths(entries.terminalPanelWidths);
+    const storedWorkspaceLayout = entries.workspaceLayout;
+    const workspaceLayout = migrateWorkspaceLayout(storedWorkspaceLayout);
+    entries.workspaceLayout = workspaceLayout;
+    if (
+      storedWorkspaceLayout !== undefined
+      && JSON.stringify(storedWorkspaceLayout) !== JSON.stringify(workspaceLayout)
+    ) {
+      persistSetting("workspaceLayout", workspaceLayout);
+    }
     entries.terminalStatsCardVisibility = migrateTerminalStatsCardVisibility(entries.terminalStatsCardVisibility);
     entries.terminalStatsCardOrder = migrateTerminalStatsCardOrder(entries.terminalStatsCardOrder);
     entries.systemResourceCardVisibility = migrateSystemResourceCardVisibility(entries.systemResourceCardVisibility);
@@ -1603,6 +1661,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       typeof entries.systemNotificationsEnabled === "boolean"
         ? entries.systemNotificationsEnabled
         : DEFAULTS.systemNotificationsEnabled;
+    entries.systemNotificationSoundPath = migrateSystemNotificationSoundPath(entries.systemNotificationSoundPath);
     entries.suppressSystemNotificationsWhenFocused =
       typeof entries.suppressSystemNotificationsWhenFocused === "boolean"
         ? entries.suppressSystemNotificationsWhenFocused
@@ -1795,6 +1854,20 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     if (key === "debugMode") {
       void applyDebugMode(value as boolean);
     }
+  },
+
+  updateHistoryDetailSortDirections: (value) => {
+    const next = { ...value };
+    set({ historyDetailSortDirections: next });
+    historyDetailSortWriteQueue = historyDetailSortWriteQueue
+      .catch(() => {})
+      .then(async () => {
+        const s = await getStore();
+        await s.set("historyDetailSortDirections", next);
+      })
+      .catch((err) => {
+        console.warn("Failed to persist history detail sort directions:", err);
+      });
   },
 
   recordTerminalInputSuggestionUsage: (event) => {

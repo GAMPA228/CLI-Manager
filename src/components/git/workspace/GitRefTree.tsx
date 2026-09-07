@@ -100,41 +100,45 @@ function RefRow({
   current?: boolean;
   selected?: boolean;
   onSelect?: (branch: GitBranchInfo) => void;
-  onContextMenu?: (event: MouseEvent<HTMLButtonElement>, branch: GitBranchInfo) => void;
+  onContextMenu?: (event: MouseEvent<HTMLElement>, branch: GitBranchInfo) => void;
   favorite?: boolean;
   onToggleFavorite?: (branch: GitBranchInfo) => void;
 }) {
   const { t } = useI18n();
   return (
-    <button
-      type="button"
-      className="ui-focus-ring flex h-7 w-full items-center gap-1.5 px-3 pl-8 text-left text-[11px]"
+    <div
+      className="flex h-7 w-full items-center gap-1.5 px-3 pl-8 text-left text-[11px]"
       style={{
         color: current || selected ? TERM.cyan : TERM.fg,
         backgroundColor: current || selected
           ? panelColorTint(TERM.cyan, 10)
           : "transparent",
       }}
-      title={branch.name}
-      onClick={() => onSelect?.(branch)}
-      onContextMenu={(event) => onContextMenu?.(event, branch)}
     >
-      <GitBranch size={11} className="shrink-0" />
-      <span className="min-w-0 flex-1 truncate">{branch.name}</span>
+      <button
+        type="button"
+        className="ui-focus-ring flex h-full min-w-0 flex-1 items-center gap-1.5 text-left"
+        title={branch.name}
+        onClick={() => onSelect?.(branch)}
+        onContextMenu={(event) => onContextMenu?.(event, branch)}
+      >
+        <GitBranch size={11} className="shrink-0" />
+        <span className="min-w-0 flex-1 truncate">{branch.name}</span>
+      </button>
       {onToggleFavorite && (
-        <span
-          role="button"
-          tabIndex={0}
+        <button
+          type="button"
           className="ui-focus-ring rounded p-0.5"
           style={{ color: favorite ? TERM.yellow : TERM.dim }}
           onClick={(event) => { event.stopPropagation(); onToggleFavorite(branch); }}
-          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); onToggleFavorite(branch); } }}
+          aria-pressed={favorite}
+          aria-label={favorite ? t("git.branch.unfavorite") : t("git.branch.favorite")}
           title={favorite ? t("git.branch.unfavorite") : t("git.branch.favorite")}
         >
           <Star size={10} fill={favorite ? "currentColor" : "none"} />
-        </span>
+        </button>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -287,7 +291,7 @@ export function GitRefTree({
       window.removeEventListener("scroll", close, true);
     };
   }, [contextMenu, tagContextMenu]);
-  const handleContextMenu = (event: MouseEvent<HTMLButtonElement>, branch: GitBranchInfo) => {
+  const handleContextMenu = (event: MouseEvent<HTMLElement>, branch: GitBranchInfo) => {
     event.preventDefault();
     event.stopPropagation();
     onSelectBranch?.(branch);
@@ -483,7 +487,7 @@ export function GitRefTree({
                    {onTagAction && (
                      <button
                        type="button"
-                       className="ui-focus-ring rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+                       className="ui-focus-ring rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
                        style={{ color: TERM.red }}
                        onClick={() => onTagAction("delete", tag.name)}
                        title={t("git.tag.delete")}
@@ -520,13 +524,13 @@ export function GitRefTree({
                 <button type="button" className="ui-focus-ring min-w-0 flex-1 truncate text-left" style={{ color: TERM.fg }} onClick={() => onOpenWorktree?.(worktree)}>
                   {worktree.name}
                 </button>
-                <button type="button" className="ui-focus-ring rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100" style={{ color: TERM.cyan }} onClick={() => onFinishWorktree?.(worktree)} title={t("git.workspace.finishWorktree")} aria-label={t("git.workspace.finishWorktree")}>
+                <button type="button" className="ui-focus-ring rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100" style={{ color: TERM.cyan }} onClick={() => onFinishWorktree?.(worktree)} title={t("git.workspace.finishWorktree")} aria-label={t("git.workspace.finishWorktree")}>
                   <GitMerge size={11} />
                 </button>
-                <button type="button" className="ui-focus-ring rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100" style={{ color: TERM.yellow }} onClick={() => onRenameWorktree?.(worktree)} title={t("git.workspace.renameWorktree")} aria-label={t("git.workspace.renameWorktree")}>
+                <button type="button" className="ui-focus-ring rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100" style={{ color: TERM.yellow }} onClick={() => onRenameWorktree?.(worktree)} title={t("git.workspace.renameWorktree")} aria-label={t("git.workspace.renameWorktree")}>
                   <Pencil size={11} />
                 </button>
-                <button type="button" className="ui-focus-ring rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100" style={{ color: TERM.red }} onClick={() => onRemoveWorktree?.(worktree)} title={t("git.workspace.removeWorktree")} aria-label={t("git.workspace.removeWorktree")}>
+                <button type="button" className="ui-focus-ring rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100" style={{ color: TERM.red }} onClick={() => onRemoveWorktree?.(worktree)} title={t("git.workspace.removeWorktree")} aria-label={t("git.workspace.removeWorktree")}>
                   <Trash2 size={11} />
                 </button>
               </div>

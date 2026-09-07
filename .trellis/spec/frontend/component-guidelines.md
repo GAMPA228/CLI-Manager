@@ -705,11 +705,12 @@ import { SessionTranscriptContent } from "./SessionTranscriptContent";
 
 - Keep transcript parsing render-only; do not mutate stored history data or backend parsing contracts for visual grouping.
 - Keep unsupported transcript text safe by falling back to the shared Markdown path.
+- `HistoryMarkdownContent` may unwrap one complete top-level `md` / `markdown` source fence before handing history content to `MarkdownContent`, so fenced GFM tables render as tables; ordinary, partial, mislabeled, and nested code fences remain literal code.
 - Do not use `dangerouslySetInnerHTML` for transcript highlighting.
 - Do not add a second Markdown parser inside history components.
 - Long transcript sections should remain bounded through collapse/preview behavior so virtualized message rows do not inflate unnecessarily.
 
-**Tests**: Run `npx tsc --noEmit`; manually inspect a history session containing XML-ish blocks, workflow-state blocks, Git changes, long lists, and normal Markdown.
+**Tests**: Run `npx tsc --noEmit`, `node --test scripts/historyMarkdownRendering.test.mjs`, and manually inspect a history session containing XML-ish blocks, workflow-state blocks, Git changes, long lists, normal Markdown, a fenced GFM table, ordinary code, and nested code fences in both app themes.
 
 ### Convention: History session parent-child grouping is render-only and conservative
 
@@ -2168,3 +2169,80 @@ KaTeX's package stylesheet owns the `.katex` base font size. Shared Markdown CSS
 ```
 
 **Tests**: Run `npx tsc --noEmit`; manually verify the page at a wide window, a narrow window, and both `zh-CN` and `en-US`, checking that cards use the available width and headers/actions do not overflow.
+
+### Convention: Host SFTP panes use the bounded File Explorer listing contract
+
+**What**: The local side of the SSH Host attachment dialog is a local directory browser, not a
+second rendering of the upload queue. It starts at the platform Desktop directory, lists entries
+through the existing Rust `file_list_dir` command with the selected directory as `rootPath` and an
+empty `relativePath`, and uses the same `@baybreezy/file-extension-icon` material file/folder icons
+as `FileExplorerSidebar`. The remote side uses the same material icon contract. Both pane headers
+stay aligned and both listing viewports use a fixed height with their own overflow scrolling.
+
+**Contracts**:
+
+- Directory rows navigate into the child directory; the local path field, directory picker,
+  parent button, and refresh button all replace or reload the current local browsing root.
+- File rows add the resolved local path to the existing transfer queue. The queue remains the
+  source of truth for upload status and is independent from the currently browsed directory.
+- Local browsing does not wait for SSH Agent initialization. A local directory failure is shown in
+  the local pane and must not be converted into an SSH or remote-directory error.
+- The `file_list_dir` Rust command remains the filesystem boundary: it canonicalizes the supplied
+  absolute directory and returns bounded metadata only. Do not grant the WebView a broad
+  `@tauri-apps/plugin-fs` scope or read local file bytes in the dialog.
+- All local path controls and accessibility labels use the shared i18n keys in both `zh-CN` and
+  `en-US`; changing the UI language must not change the selected local path or queue.
+- The local and remote headers reserve the same height so their list boundaries align; a long
+  listing scrolls inside its fixed viewport instead of expanding the dialog.
+
+**Tests**: Run `npx tsc --noEmit` and `npm run build`; manually verify Desktop defaults and
+listing on Windows/macOS, empty/unavailable directories, nested navigation, parent/root boundary,
+manual and native directory selection, refresh after a filesystem change, multiple file selection,
+duplicate suppression, upload progress, and language switching.
+
+### Common Mistake: Leaving `@monaco-editor/react` fully controlled
+
+**Symptom**: While the user types quickly in a config editor, the caret suddenly jumps to the last
+line of the document, or characters land out of order (typing `12345` yields `"124"35`). Reported
+against the provider common-configuration editor (issue #241 follow-up).
+
+**Root cause**: `@monaco-editor/react` synchronises a controlled `value` by comparing it with
+`editor.getValue()`; on any mismatch it replaces the **full model range** with
+`forceMoveMarkers: true`, which collapses the selection to the end of the document. Monaco emits
+content changes from its own DOM listeners, so `onChange` -> `setState` is a default-lane React
+update. When the tree is busy — `NativeProviderSettingsPage` polls failover state every second —
+React can commit props that lag the model by several keystrokes. Every lagging commit rewrites the
+whole document: the caret is pushed to the end, and a caret restored against pre-replacement
+content makes the following keystrokes land at the wrong offset, which is what scrambles the text
+(auto-closed quotes make the misplacement obvious).
+
+**Rules for provider config editors** (`NativeProviderCodeEditor`, shared by common config,
+provider-specific config, the full-document editor, effective-config preview and header/body
+overrides):
+
+- Pass `defaultValue`, never `value`, to `<Editor>`. The library's built-in sync must stay inert;
+  this component owns the sync policy.
+- Queue every value emitted from `onChange` in order. When an incoming prop matches a queued
+  emission, acknowledge up to that entry and **never write the model** — the model already holds
+  that text or newer text the user just typed. Matching by queue (not by "the previous value")
+  is required: React batching can skip intermediate values and the lag is not bounded to one
+  keystroke. Cap the queue so a consumer that normalises the value cannot grow it without bound.
+- Any genuine external replacement (refresh, save write-back, provider/document switch, generated
+  config) must save and restore selections plus `scrollTop` / `scrollLeft` around the edit. Monaco
+  clamps out-of-range selections, so restoring is safe after the content shrinks.
+- Use `model.pushEditOperations`, not `editor.executeEdits`: read-only editors block
+  `executeEdits`, and the read-only preview surfaces must still refresh without losing scroll.
+- Suppress the `onChange` callback while applying an external value, otherwise consumers that track
+  dirty state mark themselves dirty on every refresh.
+- Keep the `options` object and the change handler referentially stable. An unstable `onChange`
+  makes the library dispose and re-subscribe `onDidChangeModelContent` on every render, which the
+  one-second failover poll would otherwise trigger every second.
+- Reset the emitted-value queue when `path` changes: a new `path` means a new (or cached) model,
+  and stale echo bookkeeping would suppress a legitimate content write.
+
+`FileEditorContent` still uses the plain controlled pattern. It has the same latent behaviour and
+must adopt the same policy if caret jumps are reported there.
+
+**Tests**: `npx tsc --noEmit`; manually hold a key in a long common configuration to confirm the
+caret stays in place and the characters keep their order, then verify refresh / save / provider
+switch / document switch still reload content and keep the viewport.

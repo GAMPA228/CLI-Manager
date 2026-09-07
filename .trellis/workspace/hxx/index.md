@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 102
-- **Last Active**: 2026-08-31
+- **Total Sessions**: 111
+- **Last Active**: 2026-09-07
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1334 | Active |
+| `journal-2.md` | ~1534 | Active |
 | `journal-1.md` | ~2014 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,15 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 111 | 2026-09-07 | 修复文件浏览器右键菜单裁剪 | `c1163a2d` | `master` |
+| 110 | 2026-09-07 | 修复 Markdown 文件链接与锚点导航 | `3680fa64` | `master` |
+| 109 | 2026-09-07 | 完成 Issue #248 VS Code 式工作区布局控制 | `1a780b2e` | `master` |
+| 108 | 2026-09-04 | 修复历史会话 Markdown 表格渲染 | `25defb59` | `master` |
+| 107 | 2026-09-04 | history-content-sort-codex-title | `dc3e2ddc` | `master` |
+| 106 | 2026-09-04 | 解除 AI 进展时间轴展开收起限制 | `eb1f2ee5` | `master` |
+| 105 | 2026-09-03 | Hook 系统通知自定义声音 | `dace561f` | `master` |
+| 104 | 2026-09-03 | Fix Codex CLI output recovery | `c51a0bcf` | `master` |
+| 103 | 2026-09-01 | SSH Agent SFTP 发布与远程目录选择器 | `4601e769` | `master` |
 | 102 | 2026-08-31 | 终端滚动快捷键 | `7ce0c105` | `master` |
 | 101 | 2026-08-31 | 终端滚动到底部快捷跳转按钮 | `37cc08a3` | `master` |
 | 100 | 2026-08-31 | 修复 Grok Build Alt+Enter 换行并合并 PR #240 | `f6b8ca66`, `66ba0fba` | `master` |
